@@ -87,7 +87,7 @@ export default function Home() {
 // Mobile Layout Component
 const MobileViewLayout = () => (
   <div className="fixed flex flex-col justify-center text-center w-full sm:w-4/6 md:w-3/6 lg:w-2/6 rounded-none shadow-md gap-6 h-full bg-gray-50">
-    <AppHeader />
+    <AppHeader header='Flourish Starlink Network'/>
     <SubscriptionPlan />
   </div>
 );
@@ -118,7 +118,7 @@ const SubscriptionPlanTabs = () => {
   return (
     <Tabs defaultValue={selectedTab} onValueChange={(value) => {
       setSelectedTab(value)
-      setNetworkPayload('category', selectedTab)
+      setNetworkPayload('category', value)
     }} className="w-[90%]">
       <TabsList className="flex flex-row justify-around w-full max-w-full space-x-6 overflow-x-scroll">
         {tab?.map((value) => (
@@ -140,21 +140,20 @@ const SubscriptionCard = ({ period }: { period: string }) => {
   const [open, setOpen] = useState(false);
   const [plans, setPlans] = useState<SubscriptionCardType[]>([]);
   const [activePlan, setActivePlan] = React.useState<SubscriptionCardType>()
-
   const handleSelectPlan = (id?: string) => {
-    const findPlan = plans.find((item) => item.id === id)
-    setActivePlan(findPlan)
-    if(activePlan){
-    setNetworkPayload('plan', {
-      price: activePlan.price,
-      duration: activePlan.duration,
-      data_bundle: activePlan.data_bundle,
-      capacity: activePlan.capacity
-    })
-  }
-  }
+    const findPlan = plans.find((item) => item.id === id);
+    if (findPlan) {
+      setActivePlan(findPlan);
+      setNetworkPayload("plan", {
+        price: findPlan.price,
+        duration: findPlan.duration,
+        data_bundle: findPlan.data_bundle,
+        capacity: findPlan.capacity,
+      });
+    }
+  };
   useEffect(() => {
-    const subPlansRef = ref(database, "plans");
+    const subPlansRef = ref(database, `${payload.network_location}/plans`);
   
     // Real-time listener
     onValue(subPlansRef, (snapshot) => {
@@ -171,7 +170,7 @@ const SubscriptionCard = ({ period }: { period: string }) => {
       }
     });
 
-  }, []);
+  }, [payload.network_location]);
   const filteredPlans = plans.filter(({ duration }) => {
     const [, planTab] = getPeriodLabel(duration);
     return planTab === period;
@@ -220,7 +219,7 @@ const SubscriptionCard = ({ period }: { period: string }) => {
 
 
 // App Header Component
-const AppHeader = () => {
+export const AppHeader = ({header}: {header?: string}) => {
   const { payload, setNetworkPayload } = useNetworkApi();
   const [locations, setLocations] = useState<NetworkLocation[]>([])
   useEffect(() => {
@@ -236,16 +235,20 @@ const AppHeader = () => {
      }, []);
  
   return (
-    <Card className="flex w-full border shadow-none rounded-b-md px-2 bg-white">
-      <CardHeader className="flex flex-row justify-between gap-4 p-0 items-center">
-        <h3 className="text-center text-lg font-bold py-4 w-full">Flourish Starlink Network</h3>
-      </CardHeader>
+    <Card className="flex w-full border shadow-none rounded-sm px-2 bg-white">
+      {header && <CardHeader className="flex flex-row justify-between gap-4 p-0 items-center">
+        <h3 className="text-center text-lg font-bold py-4 w-full">{header}</h3>
+      </CardHeader>}
+
       <CardContent className="px-2">
-        <Select onValueChange={(value) => setNetworkPayload("network_location", value)}>
-          <SelectTrigger className="mb-5 cursor-pointer bg-white">
+        <Select value={payload.network_location} onValueChange={(value) => {
+          setNetworkPayload("network_location", value)
+          console.log(value)
+        }}>
+          <SelectTrigger className="cursor-pointer bg-white">
             <SelectValue placeholder="Select network location" />
           </SelectTrigger>
-          <SelectContent className="py-2">
+          <SelectContent className="">
             <SelectGroup>
               {locations.map(({ key, value }) => (
                 <SelectItem key={key} value={key}>
@@ -255,13 +258,6 @@ const AppHeader = () => {
             </SelectGroup>
           </SelectContent>
         </Select>
-        <Input
-          type="text"
-          value={payload.phone_number}
-          onChange={(e) => setNetworkPayload("phone_number", e.target.value)}
-          placeholder="+234 903115464"
-          className="h-10 focus-visible:border-gray-200 focus-visible:ring-gray-50 bg-white"
-        />
       </CardContent>
     </Card>
   );
@@ -308,7 +304,7 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
   async function initializePayment(): Promise<InitializeResponse> {
     try {
       const response = await api.post<InitializeResponse>(`https://api.paystack.co/transaction/initialize`, {
-        email: "fromnanalodge@gmail.com", // Ensure this is actually an email if required by the API
+        email: network_location === 'nana-network' ? "fromnanalodge@gmail.com" : "fromalherilodge@gmail.com", // Ensure this is actually an email if required by the API
         amount: amount * 100,
         callback_url: `https://flourish-network.vercel.app/voucher?duration=${duration}&capacity=${capacity}&bundle=${data_bundle}`,
       });

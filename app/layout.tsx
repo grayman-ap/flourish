@@ -3,7 +3,6 @@ import "./globals.css";
 import localFont from 'next/font/local'
 import { Suspense } from "react";
 
-
 const dinBold = localFont({
   src: './fonts/D-DIN-Bold.ttf',
   variable: '--font-din-bold',

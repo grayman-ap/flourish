@@ -5,10 +5,10 @@ import { SubscriptionCardType } from "@/app/page";
 import { useNetworkApi } from "@/app/network.store";
 import { useEffect, useState } from "react";
 
-export async function fetchSubPlans(){
+export async function fetchSubPlans(location: string){
   try{
     const dbRef = ref(database)
-    const snap_shot = await get(child(dbRef, "plans"));
+    const snap_shot = await get(child(dbRef, `${location}/plans`));
 
     if(snap_shot.exists()){
       console.log("Data", snap_shot.val())
@@ -20,9 +20,9 @@ export async function fetchSubPlans(){
   }
 }
 
-export async function addVouchers(category: string, capacity: string, bundle: number, voucherCodes: string[]) {
+export async function addVouchers(category: string, capacity: string, bundle: number, voucherCodes: string[], location: string) {
   try {
-    const dbRef = ref(database, `vouchers/${category}/${capacity}/${bundle}`);
+    const dbRef = ref(database, `${location}/vouchers/${category}/${capacity}/${bundle}`);
     
     // 🔹 Prepare all database write operations
     const uploadPromises = voucherCodes.map(async (code) => {
@@ -32,16 +32,16 @@ export async function addVouchers(category: string, capacity: string, bundle: nu
 
     // 🔹 Wait for all writes to complete
     await Promise.all(uploadPromises);
-
+    alert(`New ${bundle}${capacity} voucher added to ${location}`)
     console.log(`${voucherCodes.length} vouchers added successfully!`);
   } catch (error) {
     console.error("Error adding vouchers:", error);
   }
 }
 
-export async function addPlans(plans: SubscriptionCardType[]) {
+export async function addPlans(plans: SubscriptionCardType[], location: string) {
   try {
-    const dbRef = ref(database, "plans"); // Reference to "plans" node
+    const dbRef = ref(database, `${location}/plans`); // Reference to "plans" node
 
     const uploadPromises = plans.map(async (plan) => {
       const newPlanRef = push(dbRef); // Auto-generate ID
@@ -49,8 +49,7 @@ export async function addPlans(plans: SubscriptionCardType[]) {
     });
 
     await Promise.all(uploadPromises);
-
-    console.log(`${plans.length} plans added successfully!`);
+    alert(`New plan added to ${location}`)
   } catch (error) {
     console.error("Error adding plans:", error);
   }
@@ -69,7 +68,7 @@ export function useFetchVouchers() {
 
     const fetchVouchers = async () => {
       try {
-        const dbPath = `vouchers/${payload.category}/${payload.plan.capacity}/${payload.plan.data_bundle}`;
+        const dbPath = `${payload.network_location}/vouchers/${payload.category}/${payload.plan.capacity}/${payload.plan.data_bundle}`;
         const dbRef = ref(database, dbPath);
 
         console.log("Fetching voucher at path:", dbPath);
@@ -93,9 +92,9 @@ export function useFetchVouchers() {
   return { exists };
 }
 
-export async function getRandomVoucherAndDelete(category: string, capacity: string, bundle?: number) {
+export async function getRandomVoucherAndDelete(category: string, capacity: string, bundle?: number, location?: string) {
   try {
-    const dbRef = ref(database, `vouchers/${category}/${capacity}/${bundle}`);
+    const dbRef = ref(database, `${location}/vouchers/${category}/${capacity}/${bundle}`);
     const snapshot = await get(dbRef);
 
     if (snapshot.exists()) {
@@ -115,7 +114,7 @@ export async function getRandomVoucherAndDelete(category: string, capacity: stri
       const selectedVoucher = vouchers[randomKey];
 
       // 🔹 Remove the selected voucher from the database
-      await set(ref(database, `vouchers/${category}/${capacity}/${bundle}/${randomKey}`), null);
+      await set(ref(database, `${location}/vouchers/${category}/${capacity}/${bundle}/${randomKey}`), null);
 
       console.log("Selected Voucher:", selectedVoucher);
       return selectedVoucher;

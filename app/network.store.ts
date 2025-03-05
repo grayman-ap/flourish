@@ -2,6 +2,10 @@
 import {create} from 'zustand'
 import z from 'zod'
 
+const Auth = z.object({
+    email: z.string(),
+    password: z.string()
+})
 const Network = z.object({
     network_provider: z.string(),
     network_location: z.string(),
@@ -19,26 +23,30 @@ const Voucher = z.object({
     duration: z.string(),
     capacity: z.string(),
     data_bundle: z.number(),
-    vouchers: z.string()
+    vouchers: z.string(),
+    location: z.string()
 })
 
 export type NetworkRequest = z.infer<typeof Network>
 export type VoucherRequest = z.infer<typeof Voucher>
+export type AuthRequest = z.infer<typeof Auth>
 
 type State = {
     payload: NetworkRequest,
     voucherPayload: VoucherRequest
+    auth: AuthRequest
     voucher: string
 }
 type Action = {
     setVoucher: (voucher: string | undefined) => void;
     setVoucherPayload: <K extends keyof VoucherRequest>(field: K, value: VoucherRequest[K]) => void
     setNetworkPayload: <K extends keyof NetworkRequest>(field: K, value: NetworkRequest[K]) => void
+    setAuthPayload: <K extends keyof AuthRequest>(field: K, value: AuthRequest[K]) => void
 }
 const useNetworkApi = create<State & Action>(
     ((set, get) => ({
         payload: {
-            network_location: 'Select location',
+            network_location: 'alheri-network',
             phone_number: '',
             network_provider: 'florish network',
             plan: {
@@ -54,8 +62,13 @@ const useNetworkApi = create<State & Action>(
             duration: '',
             capacity: '',
             vouchers: '',
-            data_bundle: 0
+            data_bundle: 0,
+            location: ''
         } satisfies VoucherRequest,
+        auth: {
+            email: '',
+            password: ''
+        } satisfies AuthRequest,
         setVoucher: (voucher: string | undefined) => set({voucher}),
         setNetworkPayload: <K extends keyof NetworkRequest>(field: K, value: NetworkRequest[K]) => {
             const {payload} = get()
@@ -71,6 +84,15 @@ const useNetworkApi = create<State & Action>(
             set({
                 voucherPayload: {
                     ...voucherPayload,
+                    [field]: value
+                }
+            })
+        },
+        setAuthPayload: <K extends keyof AuthRequest>(field: K, value: AuthRequest[K]) => {
+            const {auth} = get()
+            set({
+                auth: {
+                    ...auth,
                     [field]: value
                 }
             })
