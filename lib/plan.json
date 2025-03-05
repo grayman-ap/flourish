@@ -1,0 +1,23 @@
+{
+  "network_provider": "flourish-network",
+  "network_location": [
+    {"key": "alheri-network", "value": "Alheri Lodge Network"},
+    {"key": "nana-network", "value": "Nana Lodge Network"}
+  ],  
+  "duration": ["hourly", "daily", "weekly", "monthly", "yearly"],
+  "plans": [
+    { "data_bundle": 750, "capacity": "MB", "duration": 1, "price": 500 },
+    { "data_bundle": 120, "capacity": "MB", "duration": 24, "price": 500 },
+    { "data_bundle": 1.4, "capacity": "GB", "duration": 24, "price": 2000 },
+    { "data_bundle": 2.5, "capacity": "GB", "duration": 24, "price": 1800 },
+    { "data_bundle": 4.6, "capacity": "GB", "duration": 24, "price": 3000 },
+    { "data_bundle": 2.9, "capacity": "GB", "duration": 24, "price": 7000 },
+    { "data_bundle": 2.7, "capacity": "GB", "duration": 24, "price": 4000 },
+    { "data_bundle": 6.3, "capacity": "GB", "duration": 24, "price": 8000 },
+    { "data_bundle": 1, "capacity": "GB", "duration": 2, "price": 350 },
+    { "data_bundle": 2.4, "capacity": "GB", "duration": 7, "price": 1200 },
+    { "data_bundle": 1.8, "capacity": "GB", "duration": 30, "price": 1500 },
+    { "data_bundle": 4.25, "capacity": "GB", "duration": 30, "price": 3000 },
+    { "data_bundle": 4.5, "capacity": "GB", "duration": 30, "price": 2000 }
+  ]
+}
