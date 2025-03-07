@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { set, ref, get, child, push } from "firebase/database";
 import { database } from "./firebase";
-import { SubscriptionCardType } from "@/app/page";
 import { useNetworkApi } from "@/app/network.store";
 import { useEffect, useState } from "react";
+import { SubscriptionCardType } from "./types";
 
 export async function fetchSubPlans(location: string){
   try{
@@ -33,9 +33,8 @@ export async function addVouchers(category: string, capacity: string, bundle: nu
     // 🔹 Wait for all writes to complete
     await Promise.all(uploadPromises);
     alert(`New ${bundle}${capacity} voucher added to ${location}`)
-    console.log(`${voucherCodes.length} vouchers added successfully!`);
   } catch (error) {
-    console.error("Error adding vouchers:", error);
+    alert(`Error adding vouchers: ${error}`);
   }
 }
 
@@ -51,18 +50,17 @@ export async function addPlans(plans: SubscriptionCardType[], location: string) 
     await Promise.all(uploadPromises);
     alert(`New plan added to ${location}`)
   } catch (error) {
-    console.error("Error adding plans:", error);
+    alert(`Error adding plans: ${error}`);
   }
 }
 
-
 export function useFetchVouchers() {
   const [exists, setExist] = useState<boolean>(false);
-  const { payload } = useNetworkApi(); // Fetches the user's plan details
+  const { payload } = useNetworkApi();
 
   useEffect(() => {
     if (!payload?.category || !payload?.plan?.capacity || !payload?.plan?.data_bundle) {
-      setExist(false); // Ensure exists is false if payload is incomplete
+      setExist(false);
       return;
     }
 
@@ -71,23 +69,15 @@ export function useFetchVouchers() {
         const dbPath = `${payload.network_location}/vouchers/${payload.category}/${payload.plan.capacity}/${payload.plan.data_bundle}`;
         const dbRef = ref(database, dbPath);
 
-        console.log("Fetching voucher at path:", dbPath);
-
         const snapshot = await get(dbRef);
-        setExist(snapshot.exists()); // Set true if exists, otherwise false
-
-        if (snapshot.exists()) {
-          console.log("Voucher found:", snapshot.val());
-        } else {
-          console.log("No voucher found.");
-        }
+        setExist(snapshot.exists());
       } catch (error) {
         console.error("Error fetching voucher:", error);
       }
     };
 
     fetchVouchers();
-  }, [payload]); // Re-run only when `payload` changes
+  }, [payload?.category, payload?.plan?.capacity, payload?.plan?.data_bundle]);
 
   return { exists };
 }

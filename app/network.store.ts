@@ -2,6 +2,14 @@
 import {create} from 'zustand'
 import z from 'zod'
 
+interface Plans {
+    plans: [
+        {id: 
+            {capacity: string, data_bundle: number, duration: number, price: number}
+        }
+    ]
+}
+
 const Auth = z.object({
     email: z.string(),
     password: z.string()

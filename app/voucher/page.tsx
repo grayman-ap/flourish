@@ -4,11 +4,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { useRouter, useSearchParams } from "next/navigation";
-import { InitializeResponse } from "../page";
 import { api } from "@/lib/api";
 import React, { useState, useEffect, useCallback } from "react";
 import { getRandomVoucherAndDelete } from "@/lib/db";
 import { useNetworkApi } from "../network.store";
+import { InitializeResponse } from "@/lib/types";
 
 export default function Page() {
   const params = useSearchParams();
@@ -18,7 +18,7 @@ export default function Page() {
   const ref = params.get("reference");
   const router = useRouter();
   const base_url = process.env.NEXT_PUBLIC_PAYSTACK_URL || "";
-  const { voucher, setVoucher } = useNetworkApi();
+  const { voucher, setVoucher, payload } = useNetworkApi();
   const [response, setResponse] = useState<InitializeResponse | null>(null);
   const [storedVoucher, setStoredVoucher] = useState<string | null>(null);
 
@@ -46,7 +46,7 @@ export default function Page() {
     if (!duration || !response?.status) return;
 
     try {
-      const newVoucher = await getRandomVoucherAndDelete(duration, capacity, bundle);
+      const newVoucher = await getRandomVoucherAndDelete(duration, capacity, bundle, payload.network_location);
       if (newVoucher) {
         setVoucher(newVoucher);
         localStorage.setItem("active_vc", newVoucher);

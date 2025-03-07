@@ -1,0 +1,21 @@
+{
+  "name": "Flourish Net",
+  "short_name": "flourishnet",
+  "description": "Flourish Network is an internet provider system designed to enable students collect vouchers efficiently",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "theme_color": "#000000"
+}

@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
-import PaystackPop from '@paystack/inline-js'
 import { getDatabase, ref, onValue } from "firebase/database";
 import axios from 'axios'
-import React, { PropsWithChildren, useCallback, useEffect, useState } from "react";
+import React, { PropsWithChildren, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -29,52 +28,11 @@ import { database } from "@/lib/firebase";
 import Link from "next/link";
 import { api } from '@/lib/api';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-
-/// Type Definitions
-export type PlanTab = "hourly" | "daily" | "weekly" | "monthly" | "yearly";
-
-export interface SubscriptionCardType {
-  id?: string,
-  data_bundle: number;
-  capacity: string;
-  duration: number;
-  price: number;
-}
-
-interface NetworkLocation {
-  key: string;
-  value: string;
-}
-
-// Data Constants
-export interface InitializeResponse {
-  status: boolean
-  message: string
-  data: {
-    authorization_url: string
-    access_code: string
-    reference: string
-  }
-}
-
-
-// Helper Functions
-const getPeriodLabel = (duration: number): [string, PlanTab] => {
-  if (duration <= 1) return ["Day", "daily"];
-  if (duration <= 5) return ["Days", "daily"];
-  if (duration === 24) return ["Hours", "hourly"];
-  if (duration === 7) return ["Days", "weekly"];
-  return ["Days", "monthly"];
-};
-
-const parseToNaira = (value: number | any) =>
-  Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-  }).format(value);
+import { getPeriodLabel, parseToNaira } from '@/lib/helper';
+import { AppHeader } from './header';
+import { PlanTab, SubscriptionCardType, InitializeResponse } from '@/lib/types';
 
 const formatDataplan = (data?: number, capacity?: string) => `${data}${capacity}`;
-
 // Main Component
 export default function Home() {
   return (
@@ -120,9 +78,9 @@ const SubscriptionPlanTabs = () => {
       setSelectedTab(value)
       setNetworkPayload('category', value)
     }} className="w-[90%]">
-      <TabsList className="flex flex-row justify-around w-full max-w-full space-x-6 overflow-x-scroll">
+      <TabsList className="flex flex-row justify-around w-full max-w-full  overflow-x-scroll">
         {tab?.map((value) => (
-          <TabsTrigger key={value} value={value} className="text-md font-[family-name:var(--font-din-bold)] cursor-pointer capitalize">
+          <TabsTrigger key={value} value={value} className={`w-full px-4 py-2 text-md font-[family-name:var(--font-din-bold)] cursor-pointer capitalize ${selectedTab === value && 'bg-gray-200 '}`}>
             {value}
           </TabsTrigger>
         ))}
@@ -134,16 +92,18 @@ const SubscriptionPlanTabs = () => {
   );
 };
 
-// Subscription Card Component
 const SubscriptionCard = ({ period }: { period: string }) => {
   const { payload, setNetworkPayload } = useNetworkApi();
   const [open, setOpen] = useState(false);
   const [plans, setPlans] = useState<SubscriptionCardType[]>([]);
-  const [activePlan, setActivePlan] = React.useState<SubscriptionCardType>()
+  const [activePlan, setActivePlan] = useState<SubscriptionCardType | null>(null);
+
   const handleSelectPlan = (id?: string) => {
     const findPlan = plans.find((item) => item.id === id);
     if (findPlan) {
       setActivePlan(findPlan);
+      const [_, tab] = getPeriodLabel(findPlan.duration);
+      setNetworkPayload('category', tab)
       setNetworkPayload("plan", {
         price: findPlan.price,
         duration: findPlan.duration,
@@ -152,51 +112,59 @@ const SubscriptionCard = ({ period }: { period: string }) => {
       });
     }
   };
+
   useEffect(() => {
     const subPlansRef = ref(database, `${payload.network_location}/plans`);
-  
-    // Real-time listener
-    onValue(subPlansRef, (snapshot) => {
+    
+    const unsubscribe = onValue(subPlansRef, (snapshot) => {
       if (snapshot.exists()) {
-        const plansArray: SubscriptionCardType[] = []; // Collect plans
-  
+        const plansArray: SubscriptionCardType[] = [];
         snapshot.forEach((childSnapshot) => {
           plansArray.push({ id: childSnapshot.key, ...childSnapshot.val() });
         });
-  
-        setPlans(plansArray); // Set state once
+
+        setPlans(plansArray);
       } else {
         setPlans([]);
       }
     });
 
+    return () => unsubscribe();
   }, [payload.network_location]);
-  const filteredPlans = plans.filter(({ duration }) => {
-    const [, planTab] = getPeriodLabel(duration);
-    return planTab === period;
-  });
-  
+
+  const filteredPlans = useMemo(() => {
+    return plans.filter(({ duration }) => {
+      const [, planTab] = getPeriodLabel(duration);
+      return planTab === period;
+    });
+  }, [plans, period]);
+
+
   return (
-    <div className="w-full grid grid-cols-2 md:grid-cols-3 gap-3 ">
-      {filteredPlans.map(({ id, data_bundle, capacity, duration, price }, idx) => {
+    !filteredPlans.length ? (<div className='w-full flex flex-col gap-1 justify-center items-center py-4 font-[family-name:var(--font-din-bold)]'>
+      <p>No available plans at the moment</p>
+      <p>Check back later</p>
+    </div>) :
+    <div className="w-full grid grid-cols-2 md:grid-cols-3 gap-3">
+     {filteredPlans.map(({ id, data_bundle, capacity, duration, price }, idx) => {
         const [label, tab] = getPeriodLabel(duration);
         return (
           <ConfirmPlan
-            key={idx}
+            key={id}
             handleOpen={setOpen}
             phone_number={payload.phone_number}
-            amount={activePlan?.price}
+            amount={activePlan?.price ?? price}
             duration={tab}
             network_provider={payload.network_provider}
             network_location={payload.network_location}
             capacity={capacity}
-            data_bundle={activePlan?.data_bundle}
+            data_bundle={activePlan?.data_bundle ?? data_bundle}
           >
             <button
               className="w-full h-40 bg-slate-50 space-y-2 flex flex-col items-center justify-center rounded-sm shadow-custom cursor-pointer active:scale-[1.09] transition-all duration-200 ease-linear"
               onClick={() => {
-                setOpen(true)
-                handleSelectPlan(id)
+                setOpen(true);
+                handleSelectPlan(id);
               }}
             >
               <p className="font-[family-name:var(--font-din-bold)] text-xl">
@@ -218,50 +186,6 @@ const SubscriptionCard = ({ period }: { period: string }) => {
 };
 
 
-// App Header Component
-export const AppHeader = ({header}: {header?: string}) => {
-  const { payload, setNetworkPayload } = useNetworkApi();
-  const [locations, setLocations] = useState<NetworkLocation[]>([])
-  useEffect(() => {
-    const subPlansRef = ref(database, 'network_location');
-
-    onValue(subPlansRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setLocations(Object.values(snapshot.val()));
-      } else {
-        setLocations([]);
-      }
-    });
-     }, []);
- 
-  return (
-    <Card className="flex w-full border shadow-none rounded-sm px-2 bg-white">
-      {header && <CardHeader className="flex flex-row justify-between gap-4 p-0 items-center">
-        <h3 className="text-center text-lg font-bold py-4 w-full">{header}</h3>
-      </CardHeader>}
-
-      <CardContent className="px-2">
-        <Select value={payload.network_location} onValueChange={(value) => {
-          setNetworkPayload("network_location", value)
-          console.log(value)
-        }}>
-          <SelectTrigger className="cursor-pointer bg-white">
-            <SelectValue placeholder="Select network location" />
-          </SelectTrigger>
-          <SelectContent className="">
-            <SelectGroup>
-              {locations.map(({ key, value }) => (
-                <SelectItem key={key} value={key}>
-                  {value}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </CardContent>
-    </Card>
-  );
-};
 
 // Confirm Plan Component
 interface ConfirmPlanProps {
@@ -306,7 +230,7 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
       const response = await api.post<InitializeResponse>(`https://api.paystack.co/transaction/initialize`, {
         email: network_location === 'nana-network' ? "fromnanalodge@gmail.com" : "fromalherilodge@gmail.com", // Ensure this is actually an email if required by the API
         amount: amount * 100,
-        callback_url: `https://flourish-network.vercel.app/voucher?duration=${duration}&capacity=${capacity}&bundle=${data_bundle}`,
+        callback_url: `https://flourishnet.online/voucher?duration=${duration}&capacity=${capacity}&bundle=${data_bundle}`,
       });
       if(response.data){
           router.push(response.data.data.authorization_url)

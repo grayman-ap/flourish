@@ -8,17 +8,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import React from "react";
-import { AppHeader, PlanTab, SubscriptionCardType } from "../page";
+import React, { useEffect, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { useNetworkApi } from "../network.store";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { addPlans, addVouchers } from "@/lib/db";
-import { LogOutIcon } from "lucide-react";
+import { LogOutIcon, Trash } from "lucide-react";
 import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, database } from "@/lib/firebase";
 import { AuthProvider } from "../AuthProvider";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "@/components/ui/dialog";
+import { DialogTitle } from "@radix-ui/react-dialog";
+import { ref, onValue, set } from "firebase/database";
+import { getPeriodLabel, parseToNaira } from "@/lib/helper";
+import { AppHeader } from "../header";
+import { PlanTab, VouchersType, SubscriptionCardType } from "@/lib/types";
 
 const PLAN_TABS: PlanTab[] = ["hourly", "daily", "weekly", "monthly", "yearly"];
 
@@ -36,22 +41,26 @@ export default function Management() {
 
   const logoutUser = async () => {
     await signOut(auth);
-    window.location.replace("/auth/login");
-    localStorage.removeItem("nu_ser");
+    
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("nu_ser"); 
+      window.location.replace("/auth/login");
+    }
   };
+  
 
   return (
     <AuthProvider>
-      <div className="m-7 rounded-md bg-black/10 drop-shadow-2xs p-4">
+      <div className="bg-black/10 p-4 h-[100vh] overflow-y-auto">
         <h2 className="text-center py-4 text-lg font-[family-name:var(--font-din-bold)]">
           Flourish Network Management
         </h2>
         <div className="flex flex-col md:flex-row gap-5">
-          <div className="relative flex flex-col gap-4 w-full md:w-1/5 h-[50vh]">
+          <div className="relative flex flex-row md:flex-col gap-4 w-full md:w-1/5 md:h-[50vh]">
             {Menu.map((item) => (
               <Card
                 key={item.id}
-                className="w-full h-[150px] shadow-none hover:scale-[1.02] hover:drop-shadow-sm transition-all ease-linear duration-150 cursor-pointer active:scale-[1.04]"
+                className={`${activeTab === item.label ? 'bg-black text-white' : 'bg-white'} rounded-md w-full h-fit p-3 md:h-[100px] flex justify-center items-center shadow-none hover:scale-[1.02] hover:drop-shadow-sm transition-all ease-linear duration-75 cursor-pointer active:scale-[1.05]`}
                 onClick={() => handleSetTab(item.label)}
               >
                 <CardContent className="capitalize text-center flex justify-center items-center text-lg font-[family-name:var(--font-din-bold)]">
@@ -78,7 +87,7 @@ export default function Management() {
 
 function View({ tab }: { tab: string }) {
   return (
-    <Card className="w-full flex-grow relative">
+    <Card className="w-full rounded-sm shadow-none border border-blue-50 drop-shadow-xs flex-grow relative">
       <CardHeader>
         <CardTitle>{tab === "vouchers" ? "Vouchers" : "Plans"}</CardTitle>
       </CardHeader>
@@ -93,7 +102,7 @@ function extractVouchers(vouchers: string): string[] {
 
 function Voucher() {
   const { payload, voucherPayload, setVoucherPayload } = useNetworkApi();
-
+  const [vouchers, setVouchers] = useState<VouchersType[]>([]);
   const handleSet = React.useCallback(() => {
     if (!voucherPayload?.vouchers) return;
 
@@ -107,16 +116,30 @@ function Voucher() {
     );
   }, [voucherPayload, payload]);
 
-  const VoucherActions = [
-    { id: 1, label: "add voucher", action: handleSet },
-    // { id: 2, label: "delete voucher", action: () => {} },
-  ];
+  useEffect(() => {
+    const subPlansRef = ref(database, `${payload.network_location}/vouchers`);
+    // Real-time listener
+    onValue(subPlansRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const plansArray: VouchersType[] = []; // Collect plans
+  console.log(plansArray)
+        snapshot.forEach((childSnapshot) => {
+          plansArray.push({ id: childSnapshot.key, ...childSnapshot.val() });
+        });
+  
+        setVouchers(plansArray); // Set state once
+      } else {
+        setVouchers([]);
+      }
+    });
+
+  }, [payload.network_location]);
 
   return (
     <div className="space-y-4">
       <Label>Select Location</Label>
       <AppHeader />
-      <div className="flex flex-row items-center w-full md:w-1/6 gap-4 mb-4">
+      <div className="flex flex-row  items-center w-full md:w-1/6 flex-wrap md:flex-nowrap gap-4 mb-4">
         <Select
           value={voucherPayload.duration}
           onValueChange={(value) => setVoucherPayload("duration", value)}
@@ -174,24 +197,61 @@ function Voucher() {
         />
       </div>
       <div className="flex flex-row gap-5 mt-10">
-        {VoucherActions.map((item) => (
           <button
-            key={item.id}
             className={`${
-              item.label.startsWith("delete") ? "bg-red-500" : "bg-blue-500"
-            } capitalize w-[10rem] rounded-md py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150`}
-            onClick={item.action}
+           "bg-blue-500"
+            } capitalize w-[12rem] md:w-[10rem] rounded-md py-2 md:py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150`}
+            onClick={() => handleSet()}
           >
-            {item.label}
+            Add voucher
           </button>
-        ))}
+         <Dialog>
+          <DialogTrigger asChild>
+          <button
+            className={`${
+             "bg-green-500"
+            } capitalize w-[12rem] md:w-[10rem] text-sm rou py-2 rounded-md md:py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150`}
+            onClick={() => {}}
+          >
+            View all vouchers
+          </button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>All vouchers</DialogTitle>
+            </DialogHeader>
+            <div>
+            <AppHeader />
+              <div className="my-4 space-y-3 max-h-[50vh] overflow-y-scroll">
+                {vouchers.map((item) => {
+                  return (
+                    <div key={item.duration} className="flex flex-row items-center justify-between border rounded-md p-2 cursor-pointer hover:bg-gray-200/50 transition-all ease-linear duration-150">
+                    <div  className="">
+                      <p className="font-[family-name:var(--font-din-bold)] capitalize">{item.id} Vouchers</p>
+                      {/* <p>{item.duration} <span className="text-xs text-gray-500">(Plan Duration)</span></p> */}
+                    </div>
+                    <button
+                      onClick={() => {
+                        set(ref(database, `${payload.network_location}/vouchers/${item.id}`), null);
+                      }}
+                    className="bg-red-400 text-white flex flex-row items-center gap-1 w-[5rem] h-9 justify-center rounded-sm text-sm font-[family-name:var(--font-din-bold)] transition-all ease-linear duration-150 active:scale-[1.04] cursor-pointer">
+                      <Trash size={14}/>
+                      Delete
+                    </button>
+                    </div>
+                  )})
+                } 
+              </div>
+            </div>
+          </DialogContent>
+         </Dialog>
       </div>
     </div>
   );
 }
 function Plan() {
   const { payload, setNetworkPayload } = useNetworkApi();
-
+  const [plans, setPlans] = useState<SubscriptionCardType[]>([]);
   const SUBSCRIPTION_PLANS: SubscriptionCardType[] = [
     {
       data_bundle: payload.plan.data_bundle,
@@ -206,13 +266,34 @@ function Plan() {
     addPlans(SUBSCRIPTION_PLANS, payload.network_location);
   }, [SUBSCRIPTION_PLANS, payload.plan]);
 
-  const PlanActions = [{ id: 1, label: "add plan", action: () => handleSet() }];
+  // const PlanActions = [
+  //   { id: 1, label: "add plan", action: () => handleSet() },
+  //   { id: 1, label: "view all plan", action: () => handleSet() },
+  // ];
 
+  useEffect(() => {
+    const subPlansRef = ref(database, `${payload.network_location}/plans`);
+    // Real-time listener
+    onValue(subPlansRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const plansArray: SubscriptionCardType[] = []; // Collect plans
+  
+        snapshot.forEach((childSnapshot) => {
+          plansArray.push({ id: childSnapshot.key, ...childSnapshot.val() });
+        });
+  
+        setPlans(plansArray); // Set state once
+      } else {
+        setPlans([]);
+      }
+    });
+
+  }, [payload.network_location]);
   return (
     <div className="space-y-4">
       <Label>Select Location</Label>
       <AppHeader />
-      <div className="space-y-4 items-center w-full md:w-1/6 gap-4 mb-4">
+      <div className="space-y-4 items-center w-full md:w-2/6 gap-4 mb-4">
         <Label>Data Capacity</Label>
         <Select
           value={payload.plan.capacity}
@@ -284,17 +365,55 @@ function Plan() {
         </div>
       </div>
       <div className="flex flex-row gap-5 mt-10">
-        {PlanActions.map((item) => (
           <button
-            key={item.id}
             className={`${
-              item.label.startsWith("delete") ? "bg-red-500" : "bg-blue-500"
-            } capitalize w-[10rem] rounded-md py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150`}
-            onClick={item.action}
+           "bg-blue-500"
+            } capitalize w-[12rem] md:w-[10rem] rounded-md  py-2 roumd:py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150`}
+            onClick={() => handleSet()}
           >
-            {item.label}
+            Add plan
           </button>
-        ))}
+         <Dialog>
+          <DialogTrigger asChild>
+          <button
+            className={`${
+             "bg-green-500"
+            } capitalize w-[12rem] md:w-[10rem] rounded-md  py-2 roumd:py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150`}
+            onClick={() => {}}
+          >
+            View all plans
+          </button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>All Plans</DialogTitle>
+            </DialogHeader>
+            <div>
+            <AppHeader />
+              <div className="my-4 space-y-3 max-h-[50vh] overflow-y-scroll">
+                {plans.map((item) => {
+                  const [label] = getPeriodLabel(item.duration);
+                  return (
+                    <div key={item.id} className="flex flex-row items-center justify-between border rounded-md p-2 cursor-pointer hover:bg-gray-200/50 transition-all ease-linear duration-150">
+                    <div  className="">
+                      <p className="font-[family-name:var(--font-din-bold)]">{item.data_bundle}{item.capacity} <span className="text-sm">({parseToNaira(item.price)})</span> Plan</p>
+                      <p>{item.duration} {label} <span className="text-xs text-gray-500">(Plan Duration)</span></p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        set(ref(database, `${payload.network_location}/plans/${item.id}`), null);
+                      }}
+                    className="bg-red-400 text-white flex flex-row items-center gap-1 w-[5rem] h-9 justify-center rounded-sm text-sm font-[family-name:var(--font-din-bold)] transition-all ease-linear duration-150 active:scale-[1.04] cursor-pointer">
+                      <Trash size={14}/>
+                      Delete
+                    </button>
+                    </div>
+                  )})
+                } 
+              </div>
+            </div>
+          </DialogContent>
+         </Dialog>
       </div>
     </div>
   );

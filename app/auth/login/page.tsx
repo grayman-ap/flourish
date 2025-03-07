@@ -23,7 +23,9 @@ export default function Login(){
     onAuthStateChanged(auth, (user) => {
         if (user){
             window.location.replace("/management")
-            localStorage.setItem('nu_ser', `${user.email}`)
+            if (typeof window !== "undefined") {
+                localStorage.setItem('nu_ser', `${user.email}`)
+              }
         }else {
             console.log("No user logged in.");
           }  
