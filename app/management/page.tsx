@@ -182,7 +182,7 @@ function Voucher() {
             type="number"
             placeholder="Enter Data bundle"
             className="w-3/6"
-            value={voucherPayload.data_bundle}
+            value={voucherPayload.data_bundle.toString()}
             onChange={(e) =>
               setVoucherPayload("data_bundle", parseInt(e.target.value))
             }

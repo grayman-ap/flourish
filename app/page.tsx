@@ -23,7 +23,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTrigger } from "@/components
 import { Button } from "@/components/ui/button";
 import { DialogTitle } from "@radix-ui/react-dialog";
 import { useNetworkApi } from "./network.store";
-import { addPlans, addVouchers, fetchSubPlans, getRandomVoucherAndDelete, useFetchVouchers } from "@/lib/db";
+import { fetchSubPlans, useFetchVouchers, useSubscriptionPlans } from "@/lib/db";
 import { database } from "@/lib/firebase";
 import Link from "next/link";
 import { api } from '@/lib/api';
@@ -31,6 +31,8 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getPeriodLabel, parseToNaira } from '@/lib/helper';
 import { AppHeader } from './header';
 import { PlanTab, SubscriptionCardType, InitializeResponse } from '@/lib/types';
+import { Loader } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 const formatDataplan = (data?: number, capacity?: string) => `${data}${capacity}`;
 // Main Component
@@ -59,31 +61,57 @@ const SubscriptionPlan = () => (
 
 // Subscription Plan Tabs
 const SubscriptionPlanTabs = () => {
-  const [selectedTab, setSelectedTab] = useState<PlanTab | string>("hourly");
   const { payload, setNetworkPayload } = useNetworkApi();
-  const [tab, setTab] = React.useState<string[]>()
-  useEffect(() => {
-    const subPlansRef = ref(database, 'duration');
 
-    onValue(subPlansRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setTab(Object.values(snapshot.val())); // Convert to array
-      } else {
-        setTab([]);
-      }
-    });
-  }, []);
+  // Load selected tab from localStorage (if available), default to "hourly"
+  const [selectedTab, setSelectedTab] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("selectedTab") || "hourly";
+    }
+    return "hourly";
+  });
+
+  const { data: tab, isLoading } = useQuery({
+    queryKey: ["subPlans"],
+    queryFn: fetchSubPlans,
+    gcTime: 1000 * 60 * 60,
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+    networkMode: "always",
+  });
+
+  // Save selectedTab to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("selectedTab", selectedTab);
+    }
+  }, [selectedTab]);
+
   return (
-    <Tabs defaultValue={selectedTab} onValueChange={(value) => {
-      setSelectedTab(value)
-      setNetworkPayload('category', value)
-    }} className="w-[90%]">
-      <TabsList className="flex flex-row justify-around w-full max-w-full  overflow-x-scroll">
-        {tab?.map((value) => (
-          <TabsTrigger key={value} value={value} className={`w-full px-4 py-2 text-md font-[family-name:var(--font-din-bold)] cursor-pointer capitalize ${selectedTab === value && 'bg-gray-200 '}`}>
-            {value}
-          </TabsTrigger>
-        ))}
+    <Tabs
+      defaultValue={selectedTab}
+      onValueChange={(value) => {
+        setSelectedTab(value);
+        setNetworkPayload("category", value);
+      }}
+      className="w-[90%]"
+    >
+      <TabsList className="flex flex-row justify-around w-full max-w-full overflow-x-scroll">
+        {isLoading ? (
+          <Loader className="animate-spin" />
+        ) : (
+          (Array.isArray(tab) ? tab : []).map((value) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className={`w-full px-4 py-2 text-md font-bold cursor-pointer capitalize ${
+                selectedTab === value && "bg-gray-200"
+              }`}
+            >
+              {value}
+            </TabsTrigger>
+          ))
+        )}
       </TabsList>
       <TabsContent value={selectedTab} className="flex items-start p-3">
         <SubscriptionCard period={selectedTab} />
@@ -91,15 +119,14 @@ const SubscriptionPlanTabs = () => {
     </Tabs>
   );
 };
-
 const SubscriptionCard = ({ period }: { period: string }) => {
   const { payload, setNetworkPayload } = useNetworkApi();
   const [open, setOpen] = useState(false);
-  const [plans, setPlans] = useState<SubscriptionCardType[]>([]);
+  // const [plans, setPlans] = useState<SubscriptionCardType[]>([]);
   const [activePlan, setActivePlan] = useState<SubscriptionCardType | null>(null);
-
+  const { data: plans, isLoading, error } = useSubscriptionPlans(payload.network_location);
   const handleSelectPlan = (id?: string) => {
-    const findPlan = plans.find((item) => item.id === id);
+    const findPlan = plans?.find((item) => item.id === id);
     if (findPlan) {
       setActivePlan(findPlan);
       const [_, tab] = getPeriodLabel(findPlan.duration);
@@ -113,27 +140,10 @@ const SubscriptionCard = ({ period }: { period: string }) => {
     }
   };
 
-  useEffect(() => {
-    const subPlansRef = ref(database, `${payload.network_location}/plans`);
-    
-    const unsubscribe = onValue(subPlansRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const plansArray: SubscriptionCardType[] = [];
-        snapshot.forEach((childSnapshot) => {
-          plansArray.push({ id: childSnapshot.key, ...childSnapshot.val() });
-        });
 
-        setPlans(plansArray);
-      } else {
-        setPlans([]);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [payload.network_location]);
 
   const filteredPlans = useMemo(() => {
-    return plans.filter(({ duration }) => {
+    return plans?.filter(({ duration }) => {
       const [, planTab] = getPeriodLabel(duration);
       return planTab === period;
     });
@@ -141,44 +151,43 @@ const SubscriptionCard = ({ period }: { period: string }) => {
 
 
   return (
-    !filteredPlans.length ? (<div className='w-full flex flex-col gap-1 justify-center items-center py-4 font-[family-name:var(--font-din-bold)]'>
-      <p>No available plans at the moment</p>
-      <p>Check back later</p>
+    !filteredPlans?.length ? (<div className='w-full flex flex-col gap-1 text-sm justify-center items-center py-4 font-[family-name:var(--font-din-normal)]'>
+      <p>No available plan, check back later</p>
     </div>) :
     <div className="w-full grid grid-cols-2 md:grid-cols-3 gap-3">
      {filteredPlans.map(({ id, data_bundle, capacity, duration, price }, idx) => {
         const [label, tab] = getPeriodLabel(duration);
         return (
-          <ConfirmPlan
-            key={id}
-            handleOpen={setOpen}
-            phone_number={payload.phone_number}
-            amount={activePlan?.price ?? price}
-            duration={tab}
-            network_provider={payload.network_provider}
-            network_location={payload.network_location}
-            capacity={capacity}
-            data_bundle={activePlan?.data_bundle ?? data_bundle}
-          >
-            <button
-              className="w-full h-40 bg-slate-50 space-y-2 flex flex-col items-center justify-center rounded-sm shadow-custom cursor-pointer active:scale-[1.09] transition-all duration-200 ease-linear"
-              onClick={() => {
-                setOpen(true);
-                handleSelectPlan(id);
-              }}
-            >
-              <p className="font-[family-name:var(--font-din-bold)] text-xl">
-                {data_bundle}
-                <span className="text-sm uppercase">{capacity}</span>
-              </p>
-              <p className="font-[family-name:var(--font-din-xbold)]">
-                {duration} {label}
-              </p>
-              <p className="font-[family-name:var(--font-din-xbold)] text-gray-500">
-                {parseToNaira(price)}
-              </p>
-            </button>
-          </ConfirmPlan>
+         isLoading ? <Loader className="animate-spin"/> : <ConfirmPlan
+         key={id}
+         handleOpen={setOpen}
+         phone_number={payload.phone_number}
+         amount={activePlan?.price ?? price}
+         duration={tab}
+         network_provider={payload.network_provider}
+         network_location={payload.network_location}
+         capacity={capacity}
+         data_bundle={activePlan?.data_bundle ?? data_bundle}
+       >
+         <button
+           className="w-full h-40 bg-slate-50 space-y-2 flex flex-col items-center justify-center rounded-sm shadow-custom cursor-pointer active:scale-[1.09] transition-all duration-200 ease-linear"
+           onClick={() => {
+             setOpen(true);
+             handleSelectPlan(id);
+           }}
+         >
+           <p className="font-[family-name:var(--font-din-bold)] text-xl">
+             {data_bundle}
+             <span className="text-sm uppercase">{capacity}</span>
+           </p>
+           <p className="font-[family-name:var(--font-din-xbold)]">
+             {duration} {label}
+           </p>
+           <p className="font-[family-name:var(--font-din-xbold)] text-gray-500">
+             {parseToNaira(price)}
+           </p>
+         </button>
+       </ConfirmPlan>
         );
       })}
     </div>
@@ -217,6 +226,7 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
     { key: "data bundle", value: formatDataplan(data_bundle, capacity) },
     { key: "amount", value: parseToNaira(amount) },
   ];
+  const {payload} = useNetworkApi()
   const router = useRouter()
   const param = useSearchParams()
   const txref = param.get('trxref')
@@ -224,7 +234,7 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
   const base_url: string | undefined = process.env.NEXT_PUBLIC_PAYSTACK_URL
   const {setVoucher} = useNetworkApi()
   const [response, setResponse] = React.useState<InitializeResponse>()
-  const {exists} = useFetchVouchers()
+  const {data} = useFetchVouchers(network_location, payload.category, capacity, data_bundle)
   async function initializePayment(): Promise<InitializeResponse> {
     try {
       const response = await api.post<InitializeResponse>(`https://api.paystack.co/transaction/initialize`, {
@@ -259,7 +269,7 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
   }
 
   const handlePay = () => {
-    if(exists){
+    if(data){
     initializePayment()
     }else{
       alert("No vouchers at the moment. check back later")
@@ -276,7 +286,7 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
   //     const fetchVoucher = async () => {
   //       const voucher = await getRandomVoucherAndDelete(duration, '', 0);
   //       if (voucher) {
-  //         router.push(`/voucher?vc=${voucher}`);
+  //         router.push(/voucher?vc=${voucher});
   //       }
   //     };
   
@@ -299,7 +309,7 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
               <p className="capitalize font-[family-name:var(--font-din-xbold)] text-gray-500">
                 {item.key}
               </p>
-              <p className="capitalize font-[family-name:var(--font-din-xbold)]">{item.value}</p>
+              <p className={`capitalize font-[family-name:var(--font-din-semibold)] text-lg`}>{item.value}</p>
             </div>
           ))}
           <button 

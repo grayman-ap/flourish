@@ -1,118 +1,165 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { set, ref, get, child, push } from "firebase/database";
+import { set, ref, get, push, onValue } from "firebase/database";
 import { database } from "./firebase";
-import { useNetworkApi } from "@/app/network.store";
-import { useEffect, useState } from "react";
-import { SubscriptionCardType } from "./types";
+import { NetworkLocation, SubscriptionCardType } from "./types";
+import { getData, saveData } from "@/lib/indexDB";
+import { useQuery } from "@tanstack/react-query";
 
-export async function fetchSubPlans(location: string){
-  try{
-    const dbRef = ref(database)
-    const snap_shot = await get(child(dbRef, `${location}/plans`));
-
-    if(snap_shot.exists()){
-      console.log("Data", snap_shot.val())
-    }else{
-      console.log("No data available")
-    }
-  }catch(error){
-    console.log("Error fetching data plans:", error)
-  }
-}
-
-export async function addVouchers(category: string, capacity: string, bundle: number, voucherCodes: string[], location: string) {
+/**
+ * Adds vouchers to Firebase under the specified category and bundle.
+ */
+export async function addVouchers(
+  category: string,
+  capacity: string,
+  bundle: number,
+  voucherCodes: string[],
+  location: string
+) {
   try {
     const dbRef = ref(database, `${location}/vouchers/${category}/${capacity}/${bundle}`);
-    
-    // 🔹 Prepare all database write operations
     const uploadPromises = voucherCodes.map(async (code) => {
-      const newVoucherRef = push(dbRef); // Auto-generate ID
-      return set(newVoucherRef, code); // Save voucher code under generated ID
+      const newVoucherRef = push(dbRef);
+      return set(newVoucherRef, code);
     });
-
-    // 🔹 Wait for all writes to complete
     await Promise.all(uploadPromises);
-    alert(`New ${bundle}${capacity} voucher added to ${location}`)
+    alert(`New ${bundle}${capacity} voucher added to ${location}`);
   } catch (error) {
     alert(`Error adding vouchers: ${error}`);
   }
 }
 
+/**
+ * Adds subscription plans to Firebase.
+ */
 export async function addPlans(plans: SubscriptionCardType[], location: string) {
   try {
-    const dbRef = ref(database, `${location}/plans`); // Reference to "plans" node
-
+    const dbRef = ref(database, `${location}/plans`);
     const uploadPromises = plans.map(async (plan) => {
-      const newPlanRef = push(dbRef); // Auto-generate ID
-      return set(newPlanRef, plan); // Save the plan data
+      const newPlanRef = push(dbRef);
+      return set(newPlanRef, plan);
     });
-
     await Promise.all(uploadPromises);
-    alert(`New plan added to ${location}`)
+    alert(`New plan added to ${location}`);
   } catch (error) {
     alert(`Error adding plans: ${error}`);
   }
 }
 
-export function useFetchVouchers() {
-  const [exists, setExist] = useState<boolean>(false);
-  const { payload } = useNetworkApi();
+/**
+ * Fetches vouchers using TanStack Query with caching and offline support.
+ */
+export const useFetchVouchers = (location: string, category: string, capacity: string, bundle: number | any) => {
+  const dbPath = `${location}/vouchers/${category}/${capacity}/${bundle}`;
 
-  useEffect(() => {
-    if (!payload?.category || !payload?.plan?.capacity || !payload?.plan?.data_bundle) {
-      setExist(false);
-      return;
-    }
+  return useQuery({
+    queryKey: ["vouchers", location, category, capacity, bundle],
+    queryFn: async () => {
+      // First, check if cached data is available immediately
+      const cachedData = await getData(dbPath);
+      if (cachedData) return cachedData;
 
-    const fetchVouchers = async () => {
       try {
-        const dbPath = `${payload.network_location}/vouchers/${payload.category}/${payload.plan.capacity}/${payload.plan.data_bundle}`;
+        // Fetch from Firebase
         const dbRef = ref(database, dbPath);
-
         const snapshot = await get(dbRef);
-        setExist(snapshot.exists());
+        if (!snapshot.exists()) {
+          return null;
+        }
+
+        const data = snapshot.val();
+        await saveData(dbPath, data); // Save data locally
+        return data;
       } catch (error) {
-        console.error("Error fetching voucher:", error);
+        console.error("Firebase fetch failed:", error);
+
+        // If fetching fails (e.g., no internet), return last cached version
+        const fallbackData = await getData(dbPath);
+        if (fallbackData) return fallbackData;
+
+        throw new Error("No data available");
       }
-    };
-
-    fetchVouchers();
-  }, [payload?.category, payload?.plan?.capacity, payload?.plan?.data_bundle]);
-
-  return { exists };
-}
-
+    }
+  });
+};
+/**
+ * Fetches and deletes a random voucher from Firebase.
+ */
 export async function getRandomVoucherAndDelete(category: string, capacity: string, bundle?: number, location?: string) {
   try {
-    const dbRef = ref(database, `${location}/vouchers/${category}/${capacity}/${bundle}`);
-    const snapshot = await get(dbRef);
-
-    if (snapshot.exists()) {
-      const vouchers = snapshot.val();
-
-      // Convert object to array of key-value pairs
-      const voucherKeys = Object.keys(vouchers);
-
-      if (voucherKeys.length === 0) {
-        console.log("No vouchers available.");
-        return null;
-      }
-
-      // 🔹 Select a random voucher
-      const randomIndex = Math.floor(Math.random() * voucherKeys.length);
-      const randomKey = voucherKeys[randomIndex];
-      const selectedVoucher = vouchers[randomKey];
-
-      // 🔹 Remove the selected voucher from the database
-      await set(ref(database, `${location}/vouchers/${category}/${capacity}/${bundle}/${randomKey}`), null);
-
-      console.log("Selected Voucher:", selectedVoucher);
-      return selectedVoucher;
-    } else {
-      console.log("No data available.");
-      return null;
+    const dbPath = `${location}/vouchers/${category}/${capacity}/${bundle}`;
+    let vouchers = await getData(dbPath);
+    if (!vouchers) {
+      const dbRef = ref(database, dbPath);
+      const snapshot = await get(dbRef);
+      if (!snapshot.exists()) return null;
+      vouchers = snapshot.val();
+      await saveData(dbPath, vouchers);
     }
+    const voucherKeys = Object.keys(vouchers);
+    if (voucherKeys.length === 0) return null;
+    const randomKey = voucherKeys[Math.floor(Math.random() * voucherKeys.length)];
+    const selectedVoucher = vouchers[randomKey];
+    delete vouchers[randomKey];
+    await saveData(dbPath, vouchers);
+    await set(ref(database, `${dbPath}/${randomKey}`), null);
+    return selectedVoucher;
   } catch (error) {
     console.error("Error fetching voucher:", error);
   }
 }
+
+/**
+ * Fetches subscription plans based on network location.
+ */
+export const useSubscriptionPlans = (networkLocation: string) => {
+  return useQuery<SubscriptionCardType[]>({
+    queryKey: ['subscriptionPlans', networkLocation],
+    queryFn: async () => {
+      if (!networkLocation) return [];
+      const dbPath =  `${networkLocation}/plans`;
+      const cachedData = await getData(dbPath);
+      if (cachedData) return cachedData;
+      const subPlansRef = ref(database, dbPath);
+      const snapshot = await get(subPlansRef);
+      
+      if (!snapshot.exists()) return [];
+      
+      const plansArray: SubscriptionCardType[] = [];
+      snapshot.forEach((childSnapshot) => {
+        plansArray.push({ id: childSnapshot.key, ...childSnapshot.val() });
+      });
+
+      console.log("Array", plansArray)
+      return plansArray;
+    },
+    gcTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2,
+    retry: 2
+  });
+};
+
+/**
+ * Fetches subscription plans using Firebase real-time updates.
+ */
+export const fetchSubPlans = async () => {
+  return new Promise((resolve, reject) => {
+    const subPlansRef = ref(database, 'duration');
+    onValue(subPlansRef, (snapshot) => {
+      resolve(snapshot.exists() ? Object.values(snapshot.val()) : []);
+    }, reject);
+  });
+};
+
+export const fetchLocation = async ():Promise<NetworkLocation[]> => {
+  return new Promise(async (resolve, reject) => {
+    const dbPath =  'network_location';
+    const cachedData = await getData(dbPath);
+    if (cachedData) return cachedData;
+    const subPlansRef = ref(database, dbPath);
+      onValue(subPlansRef, (snapshot) => {
+        if (snapshot.exists()) {
+          return resolve(Object.values(snapshot.val()));
+        }
+      }, reject);
+  });
+};
