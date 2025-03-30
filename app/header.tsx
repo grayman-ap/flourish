@@ -19,6 +19,7 @@ export const AppHeader = ({ header }: { header?: string }) => {
     (key: string) => {
       setSelected((prev) => (prev !== key ? key : prev));
       setNetworkPayload("network_location", key);
+      localStorage.setItem("network_location", key);
     },
     [setNetworkPayload] // Remove selected from dependencies
   );

@@ -149,3 +149,6 @@
   *::-webkit-scrollbar-thumb:hover {
     background-color: #abbace; /* Thumb color on hover */
   }
+  button{
+    cursor: pointer;
+  }
