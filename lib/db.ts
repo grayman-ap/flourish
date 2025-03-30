@@ -2,7 +2,12 @@
 import { set, ref, get, push, onValue } from "firebase/database";
 import { database } from "./firebase";
 import { NetworkLocation, SubscriptionCardType } from "./types";
+import { getData, saveData } from "@/lib/indexDB";
 import { useQuery } from "@tanstack/react-query";
+
+// Cache to store availability results with timestamps
+const availabilityCache: Record<string, { result: boolean; timestamp: number }> = {};
+const CACHE_EXPIRATION = 30 * 1000; // 30 seconds
 
 /**
  * Adds vouchers to Firebase under the specified category and bundle.
@@ -86,18 +91,29 @@ export function useFetchVouchers(
   });
 }
 
-// Improved implementation with better error handling and logging
-export async function getRandomVoucherAndDelete(category: string, capacity: string, bundle?: number, location?: string) {
+/**
+ * Gets a random voucher and deletes it from the database.
+ * Uses a transaction-like approach for reliability.
+ */
+export async function getRandomVoucherAndDelete(
+  category?: string, 
+  capacity?: string, 
+  bundle?: number | string, 
+  location?: string
+): Promise<string | null> {
   try {
+    // Validate required parameters
     if (!category || !capacity || !bundle || !location) {
-      console.error("Missing required parameters for getRandomVoucherAndDelete");
+      console.error("Missing required parameters for getRandomVoucherAndDelete:", {
+        category, capacity, bundle, location
+      });
       return null;
     }
     
     const dbPath = `${location}/vouchers/${category}/${capacity}/${bundle}`;
     console.log(`Attempting to get and delete voucher from path: ${dbPath}`);
     
-    // Always fetch fresh from Firebase
+    // Get a fresh snapshot of available vouchers
     const vouchersRef = ref(database, dbPath);
     const snapshot = await get(vouchersRef);
     
@@ -141,6 +157,12 @@ export async function getRandomVoucherAndDelete(category: string, capacity: stri
       console.log("Voucher successfully deleted");
     }
     
+    // Invalidate the availability cache for this path
+    const cacheKey = dbPath;
+    if (availabilityCache[cacheKey]) {
+      delete availabilityCache[cacheKey];
+    }
+    
     return selectedVoucher;
   } catch (error) {
     console.error("Error in getRandomVoucherAndDelete:", error);
@@ -157,8 +179,8 @@ export const useSubscriptionPlans = (networkLocation: string) => {
     queryFn: async () => {
       if (!networkLocation) return [];
       const dbPath = `${networkLocation}/plans`;
-      
-      // Directly fetch from Firebase, no caching
+      const cachedData = await getData(dbPath);
+      if (cachedData) return cachedData;
       const subPlansRef = ref(database, dbPath);
       const snapshot = await get(subPlansRef);
       
@@ -169,11 +191,11 @@ export const useSubscriptionPlans = (networkLocation: string) => {
         plansArray.push({ id: childSnapshot.key, ...childSnapshot.val() });
       });
 
-      console.log("Plans array:", plansArray);
+      await saveData(dbPath, plansArray);
       return plansArray;
     },
-    gcTime: 1000 * 60 * 5,
-    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 30, // Increased to 30 minutes
+    staleTime: 1000 * 60 * 15, // Increased to 15 minutes
     retry: 2
   });
 };
@@ -191,16 +213,20 @@ export const fetchSubPlans = async () => {
 
 export const fetchLocation = async (): Promise<NetworkLocation[]> => {
   const dbPath = 'network_location';
-  
-  // Directly fetch from Firebase, no caching
+  const cachedData = await getData(dbPath);
+  if (cachedData) return cachedData;
   return new Promise((resolve, reject) => {
     onValue(ref(database, dbPath), (snapshot) => {
-      resolve(snapshot.exists() ? Object.values(snapshot.val()) : []);
-    }, reject);
-  });
+      const data = snapshot.exists() ? Object.values(snapshot.val()) as NetworkLocation[] : [];
+      saveData(dbPath, data);
+      resolve(data);
+    }, reject);  });
 };
 
-// Check if vouchers are available
+/**
+ * Checks if vouchers are available for a specific category, capacity, and bundle.
+ * Implements caching to reduce frequent Firebase calls.
+ */
 export async function checkVouchersAvailability(
   location?: string,
   category?: string,
@@ -208,15 +234,44 @@ export async function checkVouchersAvailability(
   bundle?: number | string
 ): Promise<boolean> {
   if (!location || !category || !capacity || !bundle) return false;
+  
   try {
     const dbPath = `${location}/vouchers/${category}/${capacity}/${bundle}`;
+    const cacheKey = dbPath;
+    const now = Date.now();
+    
+    // Check if we have a cached result that's still valid
+    if (availabilityCache[cacheKey] && 
+        now - availabilityCache[cacheKey].timestamp < CACHE_EXPIRATION) {
+      // Use cached result if it's less than 30 seconds old
+      return availabilityCache[cacheKey].result;
+    }
+    
+    // If no valid cache, fetch from Firebase
     console.log("Checking vouchers availability at path:", dbPath);
-    
-    // Always fetch from Firebase, no caching
     const snapshot = await get(ref(database, dbPath));
-    const vouchers = snapshot.val();
     
-    return vouchers ? Object.keys(vouchers).length > 0 : false;
+    // We only need to know if vouchers exist and how many, not the actual vouchers
+    const hasVouchers = snapshot.exists();
+    let voucherCount = 0;
+    
+    if (hasVouchers) {
+      // Count vouchers without loading all data
+      snapshot.forEach(() => {
+        voucherCount++;
+        return voucherCount >= 10; // Stop after counting 10 vouchers
+      });
+    }
+    
+    const result = voucherCount > 0;
+    
+    // Cache the result with current timestamp
+    availabilityCache[cacheKey] = {
+      result,
+      timestamp: now
+    };
+    
+    return result;
   } catch (error) {
     console.error("Error checking vouchers availability:", error);
     return false;

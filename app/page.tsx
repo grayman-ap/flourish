@@ -1,42 +1,45 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
-import { getDatabase, ref, onValue } from "firebase/database";
-import axios from 'axios';
-import React, { PropsWithChildren, useCallback, useEffect, useMemo, useState } from "react";
+
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useQuery } from "@tanstack/react-query";
+import { Toaster, toast } from "sonner";
+
+// UI Components
 import {
   Card,
   CardContent,
-  CardHeader,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTrigger } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { DialogTitle } from "@radix-ui/react-dialog";
-import { useNetworkApi } from "./network.store";
-import { fetchSubPlans, useSubscriptionPlans, checkVouchersAvailability } from "@/lib/db";
-import { database } from "@/lib/firebase";
-import Link from "next/link";
-import { api } from '@/lib/api';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { getPeriodLabel, parseToNaira } from '@/lib/helper';
-import { AppHeader } from './header';
-import { PlanTab, SubscriptionCardType, InitializeResponse } from '@/lib/types';
-import { AlertCircle, CheckCircle2, Loader, Wifi, WifiOff, Clock, Package, CreditCard } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { Toaster, toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-const formatDataplan = (data?: number, capacity?: string) => `${data}${capacity}`;
+// Icons
+import { 
+  AlertCircle, 
+  Loader, 
+  Wifi, 
+  WifiOff, 
+  Clock, 
+  Package, 
+  CreditCard, 
+  ExternalLink,
+  Ticket
+} from "lucide-react";
+
+// App-specific imports
+import { useNetworkApi } from "./network.store";
+import { fetchSubPlans, useSubscriptionPlans, checkVouchersAvailability } from "@/lib/db";
+import { getPeriodLabel, parseToNaira } from '@/lib/helper';
+import { AppHeader } from './header';
+import { SubscriptionCardType, InitializeResponse } from '@/lib/types';
+import { motion } from "framer-motion";
+
+// Helper function for formatting data plans
+const formatDataplan = (data?: number, capacity?: string): string => 
+  `${data}${capacity}`;
 
 // Main Component
 export default function Home() {
@@ -66,6 +69,7 @@ const SubscriptionPlan = () => (
 // Subscription Plan Tabs
 const SubscriptionPlanTabs = () => {
   const { payload, setNetworkPayload } = useNetworkApi();
+  const router = useRouter();
 
   // Load selected tab from localStorage (if available), default to "hourly"
   const [selectedTab, setSelectedTab] = useState<string>(() => {
@@ -74,6 +78,18 @@ const SubscriptionPlanTabs = () => {
     }
     return "hourly";
   });
+
+  // Check if user has an active voucher
+  const [hasActiveVoucher, setHasActiveVoucher] = useState(false);
+  const [activeVoucher, setActiveVoucher] = useState<string | null>(null);
+  
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const voucher = localStorage.getItem("active_vc");
+      setHasActiveVoucher(!!voucher);
+      setActiveVoucher(voucher);
+    }
+  }, []);
 
   const { data: tab, isLoading, error } = useQuery({
     queryKey: ["subPlans"],
@@ -112,6 +128,35 @@ const SubscriptionPlanTabs = () => {
       }}
       className="w-full px-4"
     >
+      {/* Voucher Banner - only shown when an active voucher exists */}
+      {hasActiveVoucher && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-4 text-white shadow-md"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Ticket className="mr-2" size={20} />
+              <div>
+                <h3 className="font-bold text-lg">You have an active voucher</h3>
+                <p className="text-sm text-blue-100">
+                  {activeVoucher ? activeVoucher.substring(0, 6) + "..." : "View your voucher"}
+                </p>
+              </div>
+            </div>
+            <Button 
+              onClick={() => router.push("/voucher")}
+              variant="secondary"
+              className="bg-white text-blue-600 hover:bg-blue-50"
+            >
+              <span className="mr-1">View</span>
+              <ExternalLink size={16} />
+            </Button>
+          </div>
+        </motion.div>
+      )}
+      
       <div className="mb-6 mt-2">
         <h2 className="text-xl font-bold text-gray-800 mb-2">Choose Your Plan</h2>
         <p className="text-sm text-gray-500">Select a subscription period that works for you</p>
@@ -145,7 +190,7 @@ const SubscriptionPlanTabs = () => {
     </Tabs>
   );
 };
-
+// Subscription Card Component
 const SubscriptionCard = ({ period }: { period: string }) => {
   const { payload, setNetworkPayload } = useNetworkApi();
   const [open, setOpen] = useState(false);
@@ -157,7 +202,7 @@ const SubscriptionCard = ({ period }: { period: string }) => {
     if (findPlan) {
       setActivePlan(findPlan);
       const [_, tab] = getPeriodLabel(findPlan.duration);
-      setNetworkPayload('category', tab)
+      setNetworkPayload('category', tab);
       setNetworkPayload("plan", {
         price: findPlan.price,
         duration: findPlan.duration,
@@ -286,20 +331,22 @@ const SubscriptionCard = ({ period }: { period: string }) => {
   );
 };
 
-// Confirm Plan Component
+// Confirm Plan Component Props
 interface ConfirmPlanProps {
   planId?: string;
-  amount: number | any;
+  amount: number;
   network_provider: string;
   network_location: string;
   phone_number: string;
-  duration: string,
+  duration: string;
   capacity: string;
   data_bundle?: number;
   handleOpen: (open: boolean) => void;
+  children: React.ReactNode;
 }
 
-const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
+// Confirm Plan Component
+const ConfirmPlan: React.FC<ConfirmPlanProps> = ({
   planId,
   amount,
   phone_number,
@@ -319,63 +366,98 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
     { key: "amount", value: parseToNaira(amount), icon: <CreditCard size={18} /> },
   ];
   
-  const {payload} = useNetworkApi();
   const router = useRouter();
   const param = useSearchParams();
-  const txref = param.get('trxref');
   const ref = param.get('reference');
-  const {setVoucher} = useNetworkApi();
-  const [response, setResponse] = React.useState<InitializeResponse>();
-  const [isProcessing, setIsProcessing] = React.useState(false);
-  const [vouchersAvailable, setVouchersAvailable] = useState<boolean>(false);
-  const [checkingVouchers, setCheckingVouchers] = useState<boolean>(false);
-  const [hasCheckedVouchers, setHasCheckedVouchers] = useState<boolean>(false);
-  const callback_url = process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_DEV_URL :  process.env.NODE_ENV === 'production' ? process.env.NEXT_PUBLIC_PROD_URL : 'https://grayman.com.ng';
+  const { setVoucher } = useNetworkApi();
+  const [response, setResponse] = useState<InitializeResponse | undefined>();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [vouchersAvailable, setVouchersAvailable] = useState(false);
+  const [checkingVouchers, setCheckingVouchers] = useState(false);
+  const [hasCheckedVouchers, setHasCheckedVouchers] = useState(false);
+  
+  // Determine callback URL based on environment
+  const callback_url = process.env.NODE_ENV === 'development' 
+    ? process.env.NEXT_PUBLIC_DEV_URL 
+    : process.env.NODE_ENV === 'production' 
+      ? process.env.NEXT_PUBLIC_PROD_URL 
+      : 'https://grayman.com.ng';
   
   // Check voucher availability when the drawer opens
-  useEffect(() => {
-    // Only check vouchers when all required parameters are available
-    if (!network_location || !duration || !capacity || !data_bundle) {
-      return;
-    }
-    
-    const checkAvailability = async () => {
-      if (checkingVouchers) return; // Prevent multiple simultaneous checks
-      
-      setCheckingVouchers(true);
-      try {
-        const available = await checkVouchersAvailability(
-          network_location,
-          duration,
-          capacity,
-          data_bundle
-        );
-        setVouchersAvailable(available);
-        setHasCheckedVouchers(true);
-        
-        // Only show toast if this is not the initial check and vouchers are not available
-        if (hasCheckedVouchers && !available) {
-          toast.warning(`No vouchers available for ${data_bundle}${capacity} ${duration} plan`);
-        }
-      } catch (error) {
-        console.error("Error checking voucher availability:", error);
-        setVouchersAvailable(false);
-        
-        // Only show error toast if this is not the initial check
-        if (hasCheckedVouchers) {
-          toast.error("Failed to check voucher availability");
-        }
-      } finally {
-        setCheckingVouchers(false);
-      }
-    };
-    
-    checkAvailability();
-  }, [network_location, duration, capacity, data_bundle, hasCheckedVouchers]);
+  
+  const initialCheckRef = useRef(false);
 
-  async function initializePayment(): Promise<InitializeResponse> {
+useEffect(() => {
+  // Only check vouchers when all required parameters are available
+  if (!network_location || !duration || !capacity || !data_bundle) {
+    return;
+  }
+
+  // Skip if we're already checking or if we've already checked once (unless parameters changed)
+  if (checkingVouchers || (initialCheckRef.current && hasCheckedVouchers)) {
+    return;
+  }
+
+  const checkAvailability = async () => {
+    setCheckingVouchers(true);
+    try {
+      const available = await checkVouchersAvailability(
+        network_location,
+        duration,
+        capacity,
+        data_bundle
+      );
+      
+      setVouchersAvailable(available);
+      
+      // Only set hasCheckedVouchers to true if it's not already true
+      if (!hasCheckedVouchers) {
+        setHasCheckedVouchers(true);
+        initialCheckRef.current = true;
+      }
+      
+      // Only show toast if vouchers are not available and this isn't the first check
+      if (initialCheckRef.current && !available) {
+        toast.warning(`No vouchers available for ${data_bundle}${capacity} ${duration} plan`);
+      }
+    } catch (error) {
+      console.error("Error checking voucher availability:", error);
+      setVouchersAvailable(false);
+      
+      // Only show error toast if this isn't the first check
+      if (initialCheckRef.current) {
+        toast.error("Failed to check voucher availability");
+      }
+    } finally {
+      setCheckingVouchers(false);
+    }
+  };
+
+  checkAvailability();
+  
+  // Remove hasCheckedVouchers and checkingVouchers from dependencies
+  // to prevent infinite loops
+}, [network_location, duration, capacity, data_bundle]);
+
+  const initializePayment = async (): Promise<InitializeResponse> => {
     setIsProcessing(true);
     try {
+      // Store ALL parameters needed for voucher generation in localStorage
+      const voucherData = {
+        duration,
+        capacity,
+        bundle: data_bundle,
+        network_location,
+        timestamp: Date.now() // Add timestamp for security
+      };
+      
+      // Store the voucher parameters in localStorage
+      localStorage.setItem("voucher_params", JSON.stringify(voucherData));
+  
+      // Generate a transaction ID to link payment with voucher
+      const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      localStorage.setItem("current_transaction", transactionId);
+  
       const response = await fetch('/api/payment/initialize', {
         method: 'POST',
         headers: {
@@ -384,7 +466,12 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
         body: JSON.stringify({
           email: network_location === 'nana-network' ? "fromnanalodge@gmail.com" : "fromalherilodge@gmail.com",
           amount: amount * 100,
-          callback_url: `${callback_url}/voucher?duration=${duration}&capacity=${capacity}&bundle=${data_bundle}`,
+          metadata: {
+            transaction_id: transactionId,
+            voucher_data: voucherData
+          },
+          // Simplified callback URL - no parameters needed
+          callback_url: `${callback_url}/voucher`,
         }),
       });
     
@@ -395,6 +482,9 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
     
       const data = await response.json();
       if (data.data) {
+        // Store the payment reference for verification
+        localStorage.setItem("payment_reference", data.data.reference);
+        
         toast.success("Payment initialization successful");
         router.push(data.data.authorization_url);
       }
@@ -405,9 +495,11 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
     } finally {
       setIsProcessing(false);
     }
-  }
+  };
+  
 
-  async function verifyTransaction(): Promise<InitializeResponse | null> {
+  // Verify transaction
+  const verifyTransaction = useCallback(async (): Promise<InitializeResponse | null> => {
     if (!ref) {
       return null;
     }
@@ -432,8 +524,9 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
     } finally {
       setIsProcessing(false);
     }
-  }
+  }, [ref]);
 
+  // Handle pay button click
   const handlePay = async () => {
     // If we haven't checked for vouchers yet, do it now
     if (!hasCheckedVouchers) {
@@ -467,7 +560,6 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
       toast.error("Please select a network location");
       return;
     }
-  
     
     // Proceed with payment if vouchers are available
     if (vouchersAvailable) {
@@ -478,11 +570,11 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
   };
   
   // Verify transaction when reference is available
-  React.useEffect(() => {
+  useEffect(() => {
     if (ref) {
       verifyTransaction();
     }
-  }, [ref]);
+  }, [ref, verifyTransaction]);
 
   return (
     <Drawer onOpenChange={handleOpen}>
@@ -513,7 +605,7 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
                     {item.key}
                   </p>
                 </div>
-                <p className={`capitalize font-bold text-gray-800`}>{item.value}</p>
+                <p className="capitalize font-bold text-gray-800">{item.value}</p>
               </div>
             ))}
           </div>

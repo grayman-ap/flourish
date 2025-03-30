@@ -1,10 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { getRandomVoucherAndDelete } from "@/lib/db";
 import { useNetworkApi } from "../network.store";
 import { InitializeResponse } from "@/lib/types";
@@ -14,64 +13,86 @@ import { Toaster, toast } from "sonner";
 
 export default function Page() {
   const params = useSearchParams();
-  const duration = params.get("duration");
-  const capacity: any = params.get("capacity");
-  const bundle: any = params.get("bundle");
-  const ref = params.get("reference");
+  const ref = params.get("reference") || params.get("trxref");
   
   const router = useRouter();
   const { voucher, setVoucher } = useNetworkApi();
   const [response, setResponse] = useState<InitializeResponse | null>(null);
-  const [storedVoucher, setStoredVoucher] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [location, setLocation] = useState<string | any>(null);
-
-
-  // Get voucher and location from localStorage on mount
+  const [verificationAttempted, setVerificationAttempted] = useState(false);
+  const [voucherGenerationAttempted, setVoucherGenerationAttempted] = useState(false);
+  const [storedVoucher, setStoredVoucher] = useState<string | null>(null);
+  const [isNewPayment, setIsNewPayment] = useState(false);
+  const [generatedVoucher, setGeneratedVoucher] = useState<string | null>(null);
+  const [redirected, setRedirected] = useState(false);
+  
+  // Debug ref to track function calls
+  const debugRef = useRef({
+    verifyCount: 0,
+    generateCount: 0,
+    lastError: null as Error | null
+  });
+  
+  // Check if this is a new payment by looking for reference in URL or localStorage
   useEffect(() => {
-
-    if (typeof window !== "undefined") {
-      // If we have a reference, look for a voucher specifically for this transaction
-      if (ref) {
-        const transactionVoucher = localStorage.getItem(`voucher_${ref}`);
-        if (transactionVoucher) {
-          setStoredVoucher(transactionVoucher);
-          setVoucher(transactionVoucher);
-          setLoading(false);
-          console.log(`Found stored voucher for transaction ${ref}: ${transactionVoucher}`);
-        } else {
-          console.log(`No stored voucher found for transaction ${ref}`);
-        }
-      } else {
-        // If no reference, check for a general voucher (backward compatibility)
-        const generalVoucher = localStorage.getItem("active_voucher");
-        if (generalVoucher) {
-          setStoredVoucher(generalVoucher);
-          setVoucher(generalVoucher);
-          setLoading(false);
-          console.log(`Found general stored voucher: ${generalVoucher}`);
-        }
-      }
+    console.log("Initial check - ref:", ref, "voucher in state:", voucher);
+    
+    if (ref && !redirected) {
+      console.log("New payment detected from URL reference");
+      setIsNewPayment(true);
       
-      setLocation(localStorage.getItem("network_location"));
+      // If this is a new payment, clear any existing voucher from state
+      // but keep it in localStorage as a backup
+      if (voucher) {
+        setStoredVoucher(voucher);
+        setVoucher("");
+      }
+    } else {
+      console.log("Not a new payment, checking for existing voucher");
+      // If not a new payment, we can use the stored voucher
+      const existingVoucher = localStorage.getItem("active_vc");
+      if (existingVoucher) {
+        console.log("Found existing voucher:", existingVoucher);
+        setStoredVoucher(existingVoucher);
+        setVoucher(existingVoucher);
+        setGeneratedVoucher(existingVoucher);
+        setLoading(false);
+      } else {
+        console.log("No existing voucher found");
+        setLoading(false);
+      }
     }
+  }, [ref, setVoucher, voucher, redirected]);
 
-  }, [ref, setVoucher]);
-
-  /** Verifies the payment transaction */
+  // Verify payment transaction if reference exists
   const verifyTransaction = useCallback(async () => {
-
-    // Skip verification if we already have a voucher for this transaction
-    if (!ref || (ref && localStorage.getItem(`voucher_${ref}`))) {
-      return;
+    debugRef.current.verifyCount++;
+    console.log(`Verification attempt #${debugRef.current.verifyCount}`);
+    
+    // If not a new payment, skip verification
+    if (!isNewPayment) {
+      console.log("Not a new payment, skipping verification");
+      setVerificationAttempted(true);
+      setLoading(false);
+      return null;
+    }
+    
+    // Get reference from URL or localStorage
+    const paymentRef = ref || localStorage.getItem("payment_reference");
+    
+    if (!paymentRef) {
+      console.log("No payment reference found");
+      setVerificationAttempted(true);
+      setLoading(false);
+      return null;
     }
 
     try {
-      console.log("Verifying transaction with ref:", ref);
+      console.log("Verifying transaction with ref:", paymentRef);
+      setLoading(true);
       
-      // Use your server-side API route instead of direct Paystack call
-      const apiResponse = await fetch(`/api/payment/verify?reference=${ref}`);
+      const apiResponse = await fetch(`/api/payment/verify?reference=${paymentRef}`);
       
       if (!apiResponse.ok) {
         const errorData = await apiResponse.json();
@@ -81,94 +102,150 @@ export default function Page() {
       const data = await apiResponse.json();
       console.log("Transaction verification response:", data);
       
-      setResponse(data);
-      console.log("Response state set to:", data);
+      if (data.status === true) {
+        setResponse(data);
+        // Store verification result in localStorage for resilience
+        localStorage.setItem("payment_verified", "true");
+        localStorage.setItem("payment_data", JSON.stringify(data));
+        console.log("Payment verification successful");
+      } else {
+        throw new Error(data.message || 'Payment verification failed');
+      }
+      
+      setVerificationAttempted(true);
+      return data;
     } catch (error: any) {
       console.error("Transaction verification failed:", error.message);
+      debugRef.current.lastError = error;
       toast.error("We couldn't verify your payment. Please try again.");
+      setVerificationAttempted(true);
       setLoading(false);
+      return null;
     }
+  }, [ref, isNewPayment]);
 
-
-  }, [ref]);  
- 
-  /** Fetches and sets a voucher */
-  const fetchVoucher = useCallback(async () => {
-    // Skip fetching if we already have a voucher
-    if (voucher || storedVoucher) {
-      console.log("Using existing voucher, skipping fetch");
+  // Generate voucher based on stored parameters
+  const generateVoucher = useCallback(async () => {
+    debugRef.current.generateCount++;
+    console.log(`Voucher generation attempt #${debugRef.current.generateCount}`);
+    
+    // If not a new payment, don't generate a new voucher
+    if (!isNewPayment) {
+      console.log("Not a new payment, using existing voucher");
       setLoading(false);
       return;
     }
     
-    console.log("fetchVoucher called with:", { duration, responseStatus: response?.status });
-    
-    if (!duration || !response?.status) {
-      console.log("Early return due to missing duration or response status");
-      setLoading(false);
+    // Skip if payment verification hasn't been attempted yet
+    if (!verificationAttempted && !localStorage.getItem("payment_verified")) {
+      console.log("Payment not verified yet, skipping voucher generation");
       return;
     }
-
+    
     setLoading(true);
+    setVoucherGenerationAttempted(true);
+    
     try {
-      console.log(`Attempting to get random voucher with:`, { 
-        duration, capacity, bundle, location: location 
+      // Get voucher parameters from localStorage
+      const voucherParamsString = localStorage.getItem("voucher_params");
+      if (!voucherParamsString) {
+        throw new Error("No voucher parameters found");
+      }
+      
+      const voucherParams = JSON.parse(voucherParamsString);
+      console.log("Generating voucher with params:", voucherParams);
+      
+      // Extract parameters
+      const { duration, capacity, bundle, network_location } = voucherParams;
+      
+      // Validate parameters
+      if (!duration || !capacity || !bundle || !network_location) {
+        throw new Error("Incomplete voucher parameters");
+      }
+      
+      // Generate voucher
+      console.log("Calling getRandomVoucherAndDelete with:", {
+        duration, capacity, bundle, network_location
       });
       
-      const newVoucher = await getRandomVoucherAndDelete(duration, capacity, bundle, location);
+      const newVoucher = await getRandomVoucherAndDelete(
+        duration,
+        capacity,
+        bundle,
+        network_location
+      );
       
-      console.log(`Voucher result:`, newVoucher);
+      console.log("getRandomVoucherAndDelete result:", newVoucher);
       
-      if (newVoucher) {
-        // Set voucher in state and localStorage
-        setVoucher(newVoucher);
-        localStorage.setItem("active_voucher", newVoucher);
-        
-        // IMPORTANT: Redirect to /voucher without query parameters
-        router.replace("/voucher");
-        
-        setLoading(false);
-      } else {
-        console.log("No voucher returned from getRandomVoucherAndDelete");
-        toast.error("We couldn't generate a voucher at this time. Please try again later.");
-        setLoading(false);
+      if (!newVoucher) {
+        throw new Error("Failed to generate voucher - no voucher returned");
       }
-    } catch (error) {
-      console.error("Failed to fetch voucher:", error);
-      toast.error("Failed to generate voucher. Please try again.");
+      
+      // Store the new voucher in multiple places for resilience
+      console.log("Setting new voucher:", newVoucher);
+      setGeneratedVoucher(newVoucher);
+      setVoucher(newVoucher);
+      
+      // Save the new voucher to localStorage, replacing any previous one
+      localStorage.setItem("active_vc", newVoucher);
+      
+      // Clear payment reference and verification data
+      localStorage.removeItem("payment_reference");
+      localStorage.removeItem("payment_verified");
+      localStorage.removeItem("voucher_params");
+      
+      // Clear the isNewPayment flag
+      setIsNewPayment(false);
+      
+      // IMPORTANT: Redirect to clean URL to prevent regeneration on reload
+      if (ref) {
+        setRedirected(true);
+        router.replace("/voucher");
+      }
+      
+      toast.success("Voucher generated successfully!");
+    } catch (error: any) {
+      console.error("Voucher generation failed:", error);
+      debugRef.current.lastError = error;
+      
+      // Check if we have a stored voucher to fall back to
+      if (storedVoucher) {
+        console.log("Falling back to stored voucher:", storedVoucher);
+        setGeneratedVoucher(storedVoucher);
+        setVoucher(storedVoucher);
+        toast.info("Using your previous voucher instead");
+      } else {
+        toast.error(`Failed to generate voucher: ${error.message}`);
+      }
+    } finally {
       setLoading(false);
     }
-  }, [duration, response?.status, setVoucher, location, capacity, bundle, voucher, storedVoucher, router]);
+  }, [isNewPayment, verificationAttempted, setVoucher, storedVoucher, ref, router]);
 
-  // Fetch transaction details
+  // Verify transaction on mount
   useEffect(() => {
-
-    // Only verify if we don't already have a voucher for this transaction
-    if (ref && !localStorage.getItem(`voucher_${ref}`)) {
+    if (!verificationAttempted && isNewPayment && !redirected) {
+      console.log("Triggering verification");
       verifyTransaction();
-    } else {
-      setLoading(false);
     }
+  }, [verifyTransaction, verificationAttempted, isNewPayment, redirected]);
 
-  }, [verifyTransaction, ref]);
-
-
-  // Fetch voucher if necessary
+  // Generate voucher after verification
   useEffect(() => {
-
-    // Only fetch if we don't have a voucher in state or localStorage
-    if (!voucher && !storedVoucher) {
-      fetchVoucher();
-    } else {
-      setLoading(false);
+    if (
+      isNewPayment &&
+      (verificationAttempted || localStorage.getItem("payment_verified")) && 
+      !voucherGenerationAttempted &&
+      !redirected
+    ) {
+      console.log("Triggering voucher generation after verification");
+      generateVoucher();
     }
+  }, [isNewPayment, verificationAttempted, voucherGenerationAttempted, generateVoucher, redirected]);
 
-  }, [fetchVoucher, voucher, storedVoucher]);
-
+  // Copy voucher to clipboard
   const copyToClipboard = () => {
-
-
-    const voucherToCopy = voucher || storedVoucher;
+    const voucherToCopy = generatedVoucher || voucher || storedVoucher;
     if (voucherToCopy) {
       navigator.clipboard.writeText(voucherToCopy);
       setCopied(true);
@@ -177,8 +254,8 @@ export default function Page() {
     }
   };
 
-  // Use voucher from state or localStorage
-  const displayedVoucher = voucher || storedVoucher;
+  // Determine which voucher to display
+  const displayVoucher = generatedVoucher || voucher || storedVoucher;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-4">
@@ -205,20 +282,20 @@ export default function Page() {
             {loading ? (
               <div className="flex flex-col items-center justify-center py-8">
                 <Loader2 className="h-12 w-12 text-blue-500 animate-spin mb-4" />
-                <p className="text-gray-600">Generating your voucher...</p>
+                <p className="text-gray-600">
+                  {isNewPayment ? "Generating your new voucher..." : "Loading your voucher..."}
+                </p>
               </div>
             ) : (
               <>
-
-                {displayedVoucher ? (
+                {displayVoucher ? (
                   <>
                     <div 
                       className="bg-gray-50 p-6 rounded-lg border border-gray-200 flex items-center justify-between mb-6 cursor-pointer hover:bg-gray-100 transition-colors"
                       onClick={copyToClipboard}
                     >
                       <p className="font-mono text-xl text-gray-800 tracking-wider">
-
-                        {displayedVoucher}
+                        {displayVoucher}
                       </p>
                       <div className="text-blue-500">
                         {copied ? <CheckCircle className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
@@ -226,19 +303,17 @@ export default function Page() {
                     </div>
                     
                     <div className="space-y-4">
-
                       <Button 
                         onClick={copyToClipboard} 
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-[1.06] transition-all ease-linear duration-200"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                       >
                         {copied ? "Copied!" : "Copy Voucher Code"}
                       </Button>
                       
-
                       <Button 
                         onClick={() => router.push("/")} 
                         variant="outline" 
-                        className="w-full flex items-center justify-center gap-2 cursor-pointer active:scale-[1.06] transition-all ease-linear duration-200"
+                        className="w-full flex items-center justify-center gap-2"
                       >
                         <ArrowLeft className="h-4 w-4" />
                         Back to Home
@@ -247,20 +322,39 @@ export default function Page() {
                   </>
                 ) : (
                   <div className="text-center py-8">
-                    <p className="text-gray-600 mb-4">No voucher available. Please try again.</p>
-
-                    <Button 
-                      onClick={() => router.push("/")} 
-                      variant="outline" 
-                      className="flex items-center justify-center gap-2 mx-auto"
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                      Back to Home
-                    </Button>
+                    <p className="text-gray-600 mb-4">
+                      {isNewPayment 
+                        ? "We couldn't generate a new voucher. Please try again or contact support." 
+                        : "No voucher available. Please complete payment first."}
+                    </p>
+                    
+                    <div className="space-y-4">
+                      {isNewPayment && (
+                        <Button 
+                          onClick={() => {
+                            setVerificationAttempted(false);
+                            setVoucherGenerationAttempted(false);
+                            verifyTransaction();
+                          }} 
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          Try Again
+                        </Button>
+                      )}
+                      
+                      <Button 
+                        onClick={() => router.push("/")} 
+                        variant="outline" 
+                        className="flex items-center justify-center gap-2 mx-auto mt-4"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to Home
+                      </Button>
+                    </div>
                   </div>
                 )}
                 
-                <div className="mt-10 text-center">
+                <div className="mt-6 text-center">
                   <p className="text-sm text-gray-500">
                     Having trouble? Contact our support team for assistance.
                   </p>
