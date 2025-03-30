@@ -330,7 +330,7 @@ const ConfirmPlan: React.FC<ConfirmPlanProps & React.PropsWithChildren> = ({
   const [vouchersAvailable, setVouchersAvailable] = useState<boolean>(false);
   const [checkingVouchers, setCheckingVouchers] = useState<boolean>(false);
   const [hasCheckedVouchers, setHasCheckedVouchers] = useState<boolean>(false);
-  const callback_url = process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_DEV_URL : process.env.NEXT_PUBLIC_PROD_URL;
+  const callback_url = process.env.NODE_ENV === 'development' ? process.env.NEXT_PUBLIC_DEV_URL :  process.env.NODE_ENV === 'production' ? process.env.NEXT_PUBLIC_PROD_URL : 'https://grayman.com.ng';
   
   // Check voucher availability when the drawer opens
   useEffect(() => {
