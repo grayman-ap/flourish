@@ -4,8 +4,8 @@
   "private": true,
 "scripts": {
   "dev": "NODE_ENV=development next dev",
-  "build:dev": "NODE_ENV=development next build",
-  "start:dev": "NODE_ENV=development next start",
+  "build": "next build",
+  "start": "next start",
   "vercel:dev": "NODE_ENV=development vercel dev",
   "vercel:preview": "NODE_ENV=development vercel --target=preview",
   "vercel:prod": "NODE_ENV=production vercel --prod"
