@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { InitializeResponse } from '@/lib/types';
 
+const paystackKey = process.env.NODE_ENV === 'development' ? process.env.PAYSTACK_TEST_KEY : process.env.PAYSTACK_SECRET_KEY;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          Authorization: `Bearer ${paystackKey}`,
           'Content-Type': 'application/json',
         },
       }
