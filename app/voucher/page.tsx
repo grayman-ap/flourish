@@ -11,7 +11,7 @@ import { ArrowLeft, Copy, CheckCircle, Loader2, Check, Clock } from "lucide-reac
 import { motion } from "framer-motion";
 import { Toaster, toast } from "sonner";
 
-// Transaction Status Component
+// Transaction Status Component (unchanged)
 const TransactionStatus = ({
   verificationAttempted,
   paymentVerified,
@@ -124,18 +124,30 @@ export default function Page() {
     const storedVoucherGenerationAttempted = localStorage.getItem("voucher_generation_attempted") === "true";
     const storedVoucher = localStorage.getItem("active_vc");
 
-    setVerificationAttempted(storedVerificationAttempted);
-    setPaymentVerified(storedPaymentVerified);
-    setVoucherGenerationAttempted(storedVoucherGenerationAttempted);
+    console.log("Loaded from localStorage:", {
+      storedVerificationAttempted,
+      storedPaymentVerified,
+      storedVoucherGenerationAttempted,
+      storedVoucher,
+    });
+
+    // Only set these if not a new payment to avoid overriding fresh state
+    if (!ref) {
+      setVerificationAttempted(storedVerificationAttempted);
+      setPaymentVerified(storedPaymentVerified);
+      setVoucherGenerationAttempted(storedVoucherGenerationAttempted);
+    }
 
     console.log("Initial check - ref:", ref, "voucher in state:", voucher);
 
-    // If there's a reference, it's a new payment
     if (ref) {
       setIsNewPayment(true);
       setLoading(true);
+      // Reset for new payment
+      setVerificationAttempted(false);
+      setPaymentVerified(false);
+      setVoucherGenerationAttempted(false);
     } else {
-      // If no reference, show stored voucher if available
       if (storedVoucher) {
         setStoredVoucher(storedVoucher);
         setGeneratedVoucher(storedVoucher);
@@ -173,6 +185,7 @@ export default function Page() {
         if (!apiResponse.ok) throw new Error((await apiResponse.json()).error || "Verification failed");
 
         const data = await apiResponse.json();
+        console.log("Payment verification response:", data);
         if (data.status === true) {
           setResponse(data);
           setPaymentVerified(true);
@@ -180,6 +193,7 @@ export default function Page() {
           localStorage.setItem("payment_verified", "true");
           localStorage.setItem("verification_attempted", "true");
           localStorage.setItem("payment_data", JSON.stringify(data));
+          setLoading(false); // Move this here to ensure loading stops after success
           return data;
         }
         throw new Error(data.message || "Payment verification failed");
@@ -211,6 +225,7 @@ export default function Page() {
     }
 
     if (!isNewPayment || !paymentVerified) {
+      console.log("Skipping voucher generation: not a new payment or payment not verified");
       setLoading(false);
       return;
     }
@@ -220,6 +235,7 @@ export default function Page() {
     localStorage.setItem("voucher_generation_attempted", "true");
 
     const voucherParamsString = localStorage.getItem("voucher_params");
+    console.log("Voucher params from localStorage:", voucherParamsString);
     if (!voucherParamsString) {
       toast.error("No voucher parameters found");
       setLoading(false);
@@ -227,6 +243,7 @@ export default function Page() {
     }
 
     const { duration, capacity, bundle, network_location } = JSON.parse(voucherParamsString);
+    console.log("Parsed voucher params:", { duration, capacity, bundle, network_location });
     if (!duration || !capacity || !bundle || !network_location) {
       toast.error("Invalid voucher parameters");
       setLoading(false);
@@ -237,7 +254,9 @@ export default function Page() {
     const maxRetries = 3;
     while (attempts < maxRetries) {
       try {
+        console.log("Calling getRandomVoucherAndDelete with:", { duration, capacity, bundle, network_location });
         const newVoucher = await getRandomVoucherAndDelete(duration, capacity, bundle, network_location);
+        console.log("Voucher generation result:", newVoucher);
         if (!newVoucher) throw new Error("No voucher returned");
 
         setGeneratedVoucher(newVoucher);
@@ -245,26 +264,24 @@ export default function Page() {
         localStorage.setItem("active_vc", newVoucher);
         localStorage.setItem("voucher_generation_attempted", "true");
         localStorage.removeItem("payment_reference");
-        // Keep payment_verified to persist TransactionStatus
         localStorage.removeItem("voucher_params");
         setIsNewPayment(false);
 
-        // Redirect to clean URL after generation
         router.replace("/voucher");
-
         toast.success("Voucher generated successfully!");
         setLoading(false);
         return;
       } catch (error: any) {
         attempts++;
-        console.error("Voucher generation failed:", {
-          error: error.message,
+        console.error("Voucher generation error details:", {
+          message: error.message,
+          stack: error.stack,
           params: { duration, capacity, bundle, network_location },
           attempt: attempts,
         });
         debugRef.current.lastError = error;
         if (attempts === maxRetries) {
-          toast.error("Failed to generate voucher after retries");
+          toast.error("Failed to generate voucher after retries: " + error.message);
           setLoading(false);
           return;
         }
@@ -273,14 +290,15 @@ export default function Page() {
     }
   }, [isNewPayment, paymentVerified, setVoucher, router]);
 
-  // Trigger verification and generation only for new payments
   useEffect(() => {
+    console.log("Checking verifyTransaction trigger:", { isNewPayment, verificationAttempted });
     if (isNewPayment && !verificationAttempted) {
       verifyTransaction();
     }
   }, [verifyTransaction, verificationAttempted, isNewPayment]);
 
   useEffect(() => {
+    console.log("Checking generateVoucher trigger:", { isNewPayment, paymentVerified, voucherGenerationAttempted });
     if (isNewPayment && paymentVerified && !voucherGenerationAttempted) {
       generateVoucher();
     }
