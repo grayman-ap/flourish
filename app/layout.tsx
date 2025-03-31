@@ -7,6 +7,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { persistQueryClient } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { useTermsModal } from '@/hooks/use-terms-modal';
 
 // Load Fonts
 const dinBold = localFont({ src: "./fonts/D-DIN-Bold.ttf", variable: "--font-din-bold", weight: "100 900" });
@@ -48,6 +49,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const [queryClient] = useState(createQueryClient); // Ensures `queryClient` persists across renders
+  const TermsModal = useTermsModal();
 
   return (
     <html lang="en">
@@ -62,6 +64,7 @@ export default function RootLayout({
         <QueryClientProvider client={queryClient}>
           <SpeedInsights />
           <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+          {TermsModal}
         </QueryClientProvider>
       </body>
     </html>

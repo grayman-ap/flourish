@@ -36,6 +36,8 @@ import { getPeriodLabel, parseToNaira } from '@/lib/helper';
 import { AppHeader } from './header';
 import { SubscriptionCardType, InitializeResponse } from '@/lib/types';
 import { motion } from "framer-motion";
+import { MobileAppHeader } from "@/components/ui/mobile-header";
+import { TermsAndConditionsModal } from "@/components/ui/terms-modal";
 
 // Helper function for formatting data plans
 const formatDataplan = (data?: number, capacity?: string): string => 
@@ -45,6 +47,7 @@ const formatDataplan = (data?: number, capacity?: string): string =>
 export default function Home() {
   return (
     <div className="flex justify-center bg-gradient-to-b from-blue-50 to-white min-h-screen">
+       <TermsAndConditionsModal />
       <Toaster position="top-center" richColors />
       <MobileViewLayout />
     </div>
@@ -54,14 +57,14 @@ export default function Home() {
 // Mobile Layout Component
 const MobileViewLayout = () => (
   <div className="fixed flex flex-col justify-center text-center w-full sm:w-4/6 md:w-3/6 lg:w-2/6 rounded-none shadow-lg gap-2 h-full bg-white">
-    <AppHeader header='Flourish Starlink Network'/>
+    <MobileAppHeader header='Flourish Starlink Network'/>
     <SubscriptionPlan />
   </div>
 );
 
 // Subscription Plan Component
 const SubscriptionPlan = () => (
-  <Card className="flex items-center border-none shadow-custom rounded-md px-0 mx-4 h-[100vh] overflow-y-scroll bg-white">
+  <Card className="flex items-center border-none shadow-custom rounded-md px-0  h-[100vh] overflow-y-scroll bg-white">
     <SubscriptionPlanTabs />
   </Card>
 );
