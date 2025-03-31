@@ -1,17 +1,17 @@
 'use client'
 import { Card, CardContent } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { fetchTenantLocations } from "../../lib/db";
-import { NetworkLocation } from "../../types";
+import { fetchTenantLocations } from "../../netvend/lib/db";
+import { NetworkLocation } from "../../netvend/types";
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { MapPin, User, Wifi } from "lucide-react";
-import { useTenant } from "../../contexts/tenant-context";
-import { useNetvendNetwork } from "../../store/network.store";
+import { useTenant } from "../../netvend/contexts/tenant-context";
+import { useNetworkApi } from "@/app/network.store";
 
 export const MobileAppHeader = ({ header }: { header?: string }) => {
   const { tenant } = useTenant();
-  const { payload, setNetworkPayload } = useNetvendNetwork();
+  const { payload, setNetworkPayload } = useNetworkApi();
   const [selected, setSelected] = useState<string>("");
   
   // Use tenant ID from context
@@ -29,7 +29,7 @@ export const MobileAppHeader = ({ header }: { header?: string }) => {
   // Initialize selected location from localStorage or default to first location
   useEffect(() => {
     if (!tenantId) return;
-    console.log("Locations",locations)
+    
     const savedLocation = localStorage.getItem(`${tenantId}_network_location`);
     if (savedLocation) {
       setSelected(savedLocation);

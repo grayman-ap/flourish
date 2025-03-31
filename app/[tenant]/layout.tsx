@@ -54,6 +54,7 @@ function TenantHeader({ tenant }: { tenant: string }) {
   }
   
   return (
-    <MobileAppHeader header={tenantData?.name || 'Network Accesss'} />
+   
+   null
   );
 }
