@@ -36,6 +36,8 @@ import { getPeriodLabel, parseToNaira } from '@/lib/helper';
 import { AppHeader } from './header';
 import { SubscriptionCardType, InitializeResponse } from '@/lib/types';
 import { motion } from "framer-motion";
+import { MobileAppHeader } from "@/components/ui/mobile-header";
+import { TermsAndConditionsModal } from "@/components/ui/terms-modal";
 
 // Helper function for formatting data plans
 const formatDataplan = (data?: number, capacity?: string): string => 
@@ -45,6 +47,7 @@ const formatDataplan = (data?: number, capacity?: string): string =>
 export default function Home() {
   return (
     <div className="flex justify-center bg-gradient-to-b from-blue-50 to-white min-h-screen">
+       <TermsAndConditionsModal />
       <Toaster position="top-center" richColors />
       <MobileViewLayout />
     </div>
@@ -53,15 +56,15 @@ export default function Home() {
 
 // Mobile Layout Component
 const MobileViewLayout = () => (
-  <div className="fixed flex flex-col justify-center text-center w-full sm:w-4/6 md:w-3/6 lg:w-2/6 rounded-none shadow-lg gap-6 h-full bg-white">
-    <AppHeader header='Flourish Starlink Network'/>
+  <div className="fixed flex flex-col justify-center text-center w-full sm:w-4/6 md:w-3/6 lg:w-2/6 rounded-none shadow-lg gap-2 h-full bg-white">
+    <MobileAppHeader header='Flourish Starlink Network'/>
     <SubscriptionPlan />
   </div>
 );
 
 // Subscription Plan Component
 const SubscriptionPlan = () => (
-  <Card className="flex items-center border-none shadow-custom rounded-md px-0 mx-4 h-[100vh] overflow-y-scroll bg-white">
+  <Card className="flex items-center border-none shadow-custom rounded-md px-0  h-[100vh] overflow-y-scroll bg-white">
     <SubscriptionPlanTabs />
   </Card>
 );
@@ -133,15 +136,15 @@ const SubscriptionPlanTabs = () => {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-4 text-white shadow-md"
+          className="mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-4 text-white shadow-md"
         >
           <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Ticket className="mr-2" size={20} />
+            <div className="flex">
+              <Ticket className="mr-2" size={30} />
               <div>
-                <h3 className="font-bold text-lg">You have an active voucher</h3>
-                <p className="text-sm text-blue-100">
-                  {activeVoucher ? activeVoucher.substring(0, 6) + "..." : "View your voucher"}
+                <h3 className="font-bold text-lg font-[family-name:var(--font-din-bold)]">You have an active voucher</h3>
+                <p className="text-sm text-blue-100 font-[family-name:var(--font-din-bold)]">
+                  {activeVoucher ? activeVoucher.substring(0, 4) + '...' : "View your voucher"}
                 </p>
               </div>
             </div>
@@ -157,12 +160,12 @@ const SubscriptionPlanTabs = () => {
         </motion.div>
       )}
       
-      <div className="mb-6 mt-2">
-        <h2 className="text-xl font-bold text-gray-800 mb-2">Choose Your Plan</h2>
+      <div className="mb-4 mt-2">
+        <h2 className="text-lg font-bold text-gray-800 mb-2 font-[family-name:var(--font-din-bold)]">Choose Your Plan</h2>
         <p className="text-sm text-gray-500">Select a subscription period that works for you</p>
       </div>
       
-      <TabsList className="flex flex-row justify-around w-full max-w-full overflow-x-auto mb-6 bg-gray-100 p-1 rounded-xl">
+      <TabsList className="flex flex-row justify-around w-full max-w-full overflow-x-auto mb-4 bg-gray-100 p-1 rounded-xl">
         {isLoading ? (
           <div className="flex items-center justify-center w-full py-4">
             <Loader className="animate-spin mr-2" size={16} />
@@ -173,13 +176,17 @@ const SubscriptionPlanTabs = () => {
             <TabsTrigger
               key={value}
               value={value}
-              className={`w-full px-4 py-2 text-md font-bold cursor-pointer capitalize rounded-lg transition-all duration-200 ${
+              className={`w-full px-4 py-2 text-sm font-bold  cursor-pointer capitalize rounded-lg transition-all duration-200 ${
                 selectedTab === value 
-                  ? "bg-blue-600 text-white shadow-md transform scale-105" 
-                  : "text-gray-700 hover:bg-gray-200"
+                  ? "bg-blue-400 text-white shadow-md transform scale-105" 
+                  : "hover:bg-gray-200"
               }`}
             >
-              {value}
+            <span className={`${
+                selectedTab === value 
+                  ? "text-white" 
+                  : "text-gray-700"
+              }`}>{value}</span>
             </TabsTrigger>
           ))
         )}
@@ -223,7 +230,7 @@ const SubscriptionCard = ({ period }: { period: string }) => {
     return (
       <div className="w-full flex flex-col items-center justify-center py-12">
         <Loader className="animate-spin mb-4 text-blue-600" size={32} />
-        <p className="text-gray-600">Loading available plans...</p>
+        <p className="text-gray-600 font-[family-name:var(--font-din-normal)]">Loading available plans...</p>
       </div>
     );
   }
@@ -242,15 +249,15 @@ const SubscriptionCard = ({ period }: { period: string }) => {
 
   if (!filteredPlans?.length) {
     return (
-      <div className="w-full flex flex-col gap-4 justify-center items-center py-12 px-4">
-        <WifiOff size={48} className="text-gray-400 mb-2" />
-        <h3 className="text-xl font-bold text-gray-700">No Plans Available</h3>
-        <p className="text-gray-500 text-center">
+      <div className="w-full flex flex-col gap-4 justify-center items-center px-4">
+        <WifiOff size={38} className="text-gray-400" />
+        <h3 className="text-md font-bold text-gray-700 font-[family-name:var(--font-din-bold)]">No Plans Available</h3>
+        <p className="text-gray-500 text-sm text-center font-[family-name:var(--font-din-normal)]">
           There are currently no plans available for this period. Please check back later or try a different subscription period.
         </p>
         <Button 
           variant="outline" 
-          className="mt-4"
+          className="mt-4 font-[family-name:var(--font-din-normal)]"
           onClick={() => window.location.reload()}
         >
           Refresh
@@ -277,7 +284,7 @@ const SubscriptionCard = ({ period }: { period: string }) => {
             data_bundle={activePlan?.data_bundle ?? data_bundle}
           >
             <button
-              className={`w-full h-44 bg-white space-y-3 flex flex-col items-center justify-center rounded-xl border border-gray-100 hover:border-blue-200 shadow-sm hover:shadow-md cursor-pointer active:scale-[1.05] transition-all duration-200 ease-in-out relative overflow-hidden ${
+              className={`w-full h-40 bg-white space-y-2 flex flex-col items-center justify-center rounded-xl border border-gray-100 hover:border-blue-200 shadow-sm hover:shadow-md cursor-pointer active:scale-[1.05] transition-all duration-200 ease-in-out relative overflow-hidden ${
                 idx % 3 === 0 ? 'bg-gradient-to-br from-blue-50 to-white' : 
                 idx % 3 === 1 ? 'bg-gradient-to-br from-green-50 to-white' : 
                 'bg-gradient-to-br from-purple-50 to-white'
@@ -288,7 +295,7 @@ const SubscriptionCard = ({ period }: { period: string }) => {
               }}
             >
               <div className="absolute top-0 right-0 w-16 h-16 overflow-hidden">
-                <div className={`absolute transform rotate-45 bg-opacity-90 text-white text-xs font-bold py-1 right-[-35px] top-[12px] w-[120px] text-center
+                <div className={`absolute transform rotate-45 bg-opacity-90 text-white text-xs font-bold py-1 right-[-35px] top-[12px] w-[120px] text-center font-[family-name:var(--font-din-bold)]
                   ${idx % 3 === 0 ? 'bg-blue-500' : 
                     idx % 3 === 1 ? 'bg-green-500' : 
                     'bg-purple-500'}`}>
@@ -296,25 +303,25 @@ const SubscriptionCard = ({ period }: { period: string }) => {
                 </div>
               </div>
               
-              <Package className={`mb-1 ${
+              <Package className={`mb-1  ${
                 idx % 3 === 0 ? 'text-blue-500' : 
                 idx % 3 === 1 ? 'text-green-500' : 
                 'text-purple-500'
-              }`} size={28} />
+              }`} size={20} />
               
-              <p className="font-bold text-2xl text-gray-800">
+              <p className="font-bold text-2xl text-gray-800 font-[family-name:var(--font-din-bold)]">
                 {data_bundle}
-                <span className="text-sm uppercase ml-1">{capacity}</span>
+                <span className="text-sm uppercase ml-1 font-[family-name:var(--font-din-normal)]">{capacity}</span>
               </p>
               
               <div className="flex items-center justify-center text-gray-600">
                 <Clock size={14} className="mr-1" />
-                <p className="font-medium">
+                <p className="font-medium text-sm font-[family-name:var(--font-din-normal)]">
                   {duration} {label}
                 </p>
               </div>
               
-              <p className="font-bold text-lg mt-1">
+              <p className="font-bold text-lg mt-1 font-[family-name:var(--font-din-bold)]">
                 <span className={`${
                   idx % 3 === 0 ? 'text-blue-600' : 
                   idx % 3 === 1 ? 'text-green-600' : 
@@ -582,17 +589,17 @@ useEffect(() => {
       <DrawerContent className="mx-auto sm:w-4/6 md:w-3/6 lg:w-2/6 text-center rounded-t-xl">
         <DrawerHeader className="border-b pb-4">
           <DialogTitle className="font-bold text-2xl text-gray-800 flex items-center justify-center">
-            <span className="mr-2">Plan Details</span>
+            <span className="mr-2 font-[family-name:var(--font-din-bold)]">Plan Details</span>
           </DialogTitle>
           <p className="text-gray-500 text-sm mt-1">Review your selection before payment</p>
         </DrawerHeader>
         
         <div className="space-y-4 p-6">
           <div className="bg-blue-50 rounded-xl p-4 mb-6 flex flex-col items-center">
-            <p className="text-sm text-blue-600 mb-1">Total Amount</p>
-            <p className="text-3xl font-bold text-blue-700">{parseToNaira(amount)}</p>
-            <p className="text-sm text-blue-600 mt-1">
-              {formatDataplan(data_bundle, capacity)} for {duration} {duration === "hourly" ? "hour" : duration === "daily" ? "day" : "month"}
+            <p className="text-sm text-blue-600 mb-1 font-[family-name:var(--font-din-bold)]">Total Amount</p>
+            <p className="text-3xl font-bold text-blue-700  font-[family-name:var(--font-din-bold)]">{parseToNaira(amount)}</p>
+            <p className="text-sm text-blue-600 mt-1 font-[family-name:var(--font-din-normal)]">
+              {formatDataplan(data_bundle, capacity)} {duration} plan
             </p>
           </div>
           
@@ -601,11 +608,11 @@ useEffect(() => {
               <div key={index} className="flex flex-row justify-between items-center">
                 <div className="flex items-center">
                   <span className="mr-2 text-gray-500">{item.icon}</span>
-                  <p className="capitalize font-medium text-gray-600">
+                  <p className="capitalize font-medium text-gray-600  font-[family-name:var(--font-din-bold)]">
                     {item.key}
                   </p>
                 </div>
-                <p className="capitalize font-bold text-gray-800">{item.value}</p>
+                <p className="capitalize font-bold text-gray-800 font-[family-name:var(--font-din-normal)]">{item.value}</p>
               </div>
             ))}
           </div>
@@ -620,8 +627,8 @@ useEffect(() => {
           {hasCheckedVouchers && !vouchersAvailable && !checkingVouchers && (
             <Alert variant="destructive" className="mt-4">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>No Vouchers Available</AlertTitle>
-              <AlertDescription>
+              <AlertTitle className="font-[family-name:var(--font-din-bold)]">No Vouchers Available</AlertTitle>
+              <AlertDescription className="font-[family-name:var(--font-din-normal)]">
                 There are currently no vouchers available for this plan. Please try another plan or check back later.
               </AlertDescription>
             </Alert>
@@ -639,18 +646,18 @@ useEffect(() => {
             {isProcessing ? (
               <div className="flex items-center justify-center">
                 <Loader className="animate-spin mr-2" size={16} />
-                <span>Processing...</span>
+                <span className="font-[family-name:var(--font-din-bold)]">Processing...</span>
               </div>
             ) : checkingVouchers ? (
-              <span>Checking Availability...</span>
+              <span className="font-[family-name:var(--font-din-bold)]">Checking Availability...</span>
             ) : !vouchersAvailable && hasCheckedVouchers ? (
-              <span>Payment Unavailable</span>
+              <span className="font-[family-name:var(--font-din-bold)]">Payment Unavailable</span>
             ) : (
-              <span>Pay Now</span>
+              <span className="text-md font-[family-name:var(--font-din-bold)]">Pay Now</span>
             )}
           </Button>
           
-          <p className="text-xs text-gray-500 text-center mt-4">
+          <p className="text-xs text-gray-500 text-center mt-4 font-[family-name:var(--font-din-normal)]">
             By clicking "Pay Now", you agree to our Terms of Service and Privacy Policy.
           </p>
         </div>
