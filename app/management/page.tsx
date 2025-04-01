@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useNetworkApi } from "../network.store";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { addPlans, addVouchers } from "@/lib/db";
+import { addPlans, addVouchers, deleteVoucher, fetchAllVouchers } from "@/lib/db";
 import { LogOutIcon, Trash } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth, database } from "@/lib/firebase";
@@ -103,6 +103,11 @@ function extractVouchers(vouchers: string): string[] {
 function Voucher() {
   const { payload, voucherPayload, setVoucherPayload } = useNetworkApi();
   const [vouchers, setVouchers] = useState<VouchersType[]>([]);
+  const [allVouchers, setAllVouchers] = useState<Record<string, Record<string, Record<string, string>>>>({});
+  const [selectedCategory, setSelectedCategory] = useState<string>("daily");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  
   const handleSet = React.useCallback(() => {
     if (!voucherPayload?.vouchers) return;
 
@@ -122,7 +127,6 @@ function Voucher() {
     onValue(subPlansRef, (snapshot) => {
       if (snapshot.exists()) {
         const plansArray: VouchersType[] = []; // Collect plans
-  console.log(plansArray)
         snapshot.forEach((childSnapshot) => {
           plansArray.push({ id: childSnapshot.key, ...childSnapshot.val() });
         });
@@ -134,12 +138,80 @@ function Voucher() {
     });
 
   }, [payload.network_location]);
+  
+  // Reset vouchers when location changes
+  useEffect(() => {
+    // Clear the current vouchers when location changes
+    setAllVouchers({});
+    
+    // If we have a dialog open with vouchers displayed, reload them for the new location
+    if (Object.keys(allVouchers).length > 0) {
+      loadVouchersForCategory(selectedCategory);
+    }
+  }, [payload.network_location]);
+  
+  // Load vouchers for the selected category when dialog opens
+  const loadVouchersForCategory = async (category: string) => {
+    if (!payload.network_location) {
+      console.error("No location selected");
+      return;
+    }
+    
+    setSelectedCategory(category);
+    setIsLoading(true);
+    setAllVouchers({}); // Clear previous vouchers
+    setSearchTerm(""); // Reset search when changing categories
+    
+    try {
+      console.log(`Loading vouchers for ${payload.network_location}/${category}`);
+      const result = await fetchAllVouchers(payload.network_location, category);
+      setAllVouchers(result);
+    } catch (error) {
+      console.error("Error loading vouchers:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Delete a specific voucher
+  const handleDeleteVoucher = async (capacity: string, bundle: string, voucherId: string) => {
+    try {
+      await deleteVoucher(
+        payload.network_location,
+        selectedCategory,
+        capacity,
+        bundle,
+        voucherId
+      );
+      // Update the local state to reflect the deletion
+      const updatedVouchers = { ...allVouchers };
+      if (updatedVouchers[capacity] && 
+          updatedVouchers[capacity][bundle] && 
+          updatedVouchers[capacity][bundle][voucherId]) {
+        delete updatedVouchers[capacity][bundle][voucherId];
+        setAllVouchers(updatedVouchers);
+      }
+    } catch (error) {
+      console.error("Error deleting voucher:", error);
+    }
+  };
+  
+  // Filter vouchers based on search term
+  const getFilteredVouchers = (capacity: string, bundle: string, voucherData: Record<string, string>) => {
+    if (!searchTerm) return voucherData;
+    
+    const filteredEntries = Object.entries(voucherData).filter(([_, voucherCode]) => 
+      voucherCode.includes(searchTerm)
+    );
+    
+    return Object.fromEntries(filteredEntries);
+  };
 
   return (
     <div className="space-y-4">
       <Label>Select Location</Label>
       <AppHeader />
-      <div className="flex flex-row  items-center w-full md:w-1/6 flex-wrap md:flex-nowrap gap-4 mb-4">
+      <div className="flex flex-row items-center w-full md:w-1/6 flex-wrap md:flex-nowrap gap-4 mb-4">
         <Select
           value={voucherPayload.duration}
           onValueChange={(value) => setVoucherPayload("duration", value)}
@@ -197,58 +269,119 @@ function Voucher() {
         />
       </div>
       <div className="flex flex-row gap-5 mt-10">
-          <button
-            className={`${
-           "bg-blue-500"
-            } capitalize w-[12rem] md:w-[10rem] rounded-md py-2 md:py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150`}
-            onClick={() => handleSet()}
-          >
-            Add voucher
-          </button>
-         <Dialog>
+        <button
+          className="bg-blue-500 capitalize w-[12rem] md:w-[10rem] rounded-md py-2 md:py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150"
+          onClick={() => handleSet()}
+        >
+          Add voucher
+        </button>
+        <Dialog>
           <DialogTrigger asChild>
-          <button
-            className={`${
-             "bg-green-500"
-            } capitalize w-[12rem] md:w-[10rem] text-sm rou py-2 rounded-md md:py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150`}
-            onClick={() => {}}
-          >
-            View all vouchers
-          </button>
+            <button
+              className="bg-green-500 capitalize w-[12rem] md:w-[10rem] text-sm rounded-md py-2 md:py-3 text-white cursor-pointer active:scale-[1.04] transition-all ease-linear duration-150"
+              onClick={() => loadVouchersForCategory(selectedCategory || 'daily')}
+            >
+              View all vouchers
+            </button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-4xl">
             <DialogHeader>
-              <DialogTitle>All vouchers</DialogTitle>
+              <DialogTitle>All vouchers for {payload.network_location}</DialogTitle>
             </DialogHeader>
             <div>
-            <AppHeader />
-              <div className="my-4 space-y-3 max-h-[50vh] overflow-y-scroll">
-                {vouchers.map((item) => {
-                  return (
-                    <div key={item.duration} className="flex flex-row items-center justify-between border rounded-md p-2 cursor-pointer hover:bg-gray-200/50 transition-all ease-linear duration-150">
-                    <div  className="">
-                      <p className="font-[family-name:var(--font-din-bold)] capitalize">{item.id} Vouchers</p>
-                      {/* <p>{item.duration} <span className="text-xs text-gray-500">(Plan Duration)</span></p> */}
+              <AppHeader />
+              
+              {/* Search input */}
+              <div className="mt-4 mb-2">
+                <Input
+                  type="text"
+                  placeholder="Search vouchers..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              
+              <div className="my-4 flex space-x-2 overflow-x-auto pb-2">
+                {PLAN_TABS.map((category) => (
+                  <button
+                    key={category}
+                    className={`px-4 py-2 rounded-md capitalize ${
+                      selectedCategory === category 
+                        ? 'bg-black text-white' 
+                        : 'bg-gray-200 text-gray-800'
+                    }`}
+                    onClick={() => loadVouchersForCategory(category)}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+              <div className="my-4 max-h-[60vh] overflow-y-auto p-2">
+                {isLoading ? (
+                  <div className="flex justify-center items-center h-40">
+                    <p>Loading vouchers...</p>
+                  </div>
+                ) : Object.keys(allVouchers).length === 0 ? (
+                  <p className="text-center text-gray-500">
+                    No vouchers found for {selectedCategory} category in {payload.network_location}
+                  </p>
+                ) : (
+                  Object.keys(allVouchers).map((capacity) => (
+                    <div key={capacity} className="border rounded-md p-4 mb-6">
+                      <h3 className="font-bold text-lg mb-2 capitalize">{capacity} Vouchers</h3>
+                      {Object.keys(allVouchers[capacity]).map((bundle) => {
+                        const bundleVouchers = allVouchers[capacity][bundle];
+                        const filteredVouchers = getFilteredVouchers(capacity, bundle, bundleVouchers);
+                        const voucherCount = Object.keys(filteredVouchers).length;
+                        
+                        if (searchTerm && voucherCount === 0) return null;
+                        
+                        return (
+                          <div key={bundle} className="mb-4 border-t pt-2">
+                            <h4 className="font-semibold mb-2">
+                              {bundle} {capacity} Bundle 
+                              <span className="ml-2 text-sm font-normal text-gray-600">
+                                ({voucherCount} {voucherCount === 1 ? 'voucher' : 'vouchers'} left)
+                              </span>
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                              {Object.keys(filteredVouchers).slice(0, 100).map((voucherId) => (
+                                <div key={voucherId} className="flex flex-col gap-2 justify-between items-center border p-2 rounded bg-gray-50">
+                                  <span className="font-mono text-sm truncate mr-2">
+                                    {filteredVouchers[voucherId]}
+                                  </span>
+                                  <button
+                                    onClick={() => handleDeleteVoucher(capacity, bundle, voucherId)}
+                                    className="bg-red-400 text-white flex items-center gap-1 px-2 py-1 rounded-sm text-xs transition-all ease-linear duration-150 active:scale-[1.04]"
+                                  >
+                                    <Trash size={12} />
+                                    Delete
+                                  </button>
+                                </div>
+                              ))}
+                              {voucherCount > 100 && (
+                                <div className="col-span-full text-center text-gray-500 mt-2">
+                                  Showing 100 of {voucherCount} vouchers
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <button
-                      onClick={() => {
-                        set(ref(database, `${payload.network_location}/vouchers/${item.id}`), null);
-                      }}
-                    className="bg-red-400 text-white flex flex-row items-center gap-1 w-[5rem] h-9 justify-center rounded-sm text-sm font-[family-name:var(--font-din-bold)] transition-all ease-linear duration-150 active:scale-[1.04] cursor-pointer">
-                      <Trash size={14}/>
-                      Delete
-                    </button>
-                    </div>
-                  )})
-                } 
+                  ))
+                )}
               </div>
             </div>
           </DialogContent>
-         </Dialog>
+        </Dialog>
       </div>
     </div>
   );
 }
+
+
 function Plan() {
   const { payload, setNetworkPayload } = useNetworkApi();
   const [plans, setPlans] = useState<SubscriptionCardType[]>([]);

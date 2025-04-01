@@ -277,3 +277,50 @@ export async function checkVouchersAvailability(
     return false;
   }
 }
+
+/**
+ * Fetches all vouchers for a specific category from a location
+ */
+export async function fetchAllVouchers(
+  location: string,
+  category: string
+): Promise<Record<string, Record<string, Record<string, string>>>> {
+  try {
+    if (!location || !category) {
+      return {};
+    }
+
+    const dbPath = `${location}/vouchers/${category}`;
+    const dbRef = ref(database, dbPath);
+    const snapshot = await get(dbRef);
+    
+    if (!snapshot.exists()) {
+      return {};
+    }
+    
+    return snapshot.val();
+  } catch (error) {
+    console.error("Error fetching all vouchers:", error);
+    return {};
+  }
+}
+
+/**
+ * Deletes a specific voucher
+ */
+export async function deleteVoucher(
+  location: string,
+  category: string,
+  capacity: string,
+  bundle: string,
+  voucherId: string
+): Promise<boolean> {
+  try {
+    const voucherRef = ref(database, `${location}/vouchers/${category}/${capacity}/${bundle}/${voucherId}`);
+    await set(voucherRef, null);
+    return true;
+  } catch (error) {
+    console.error("Error deleting voucher:", error);
+    return false;
+  }
+}

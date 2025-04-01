@@ -5,7 +5,6 @@ import withPWA from 'next-pwa';
 const bundleAnalyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 });
-
 // Base Next.js configuration
 const nextConfig = {
   reactStrictMode: true,
@@ -37,8 +36,18 @@ const nextConfig = {
       },
     ];
   },
+  experimental: {
+    // Disable static generation for specific paths
+    excludeStaticRoutes: [
+      '/api/payment/verify',
+      '/netvend/api/payment/verify',
+      '/',
+      '/voucher',
+      '/netvend/admin',
+      '/netvend/admin/tenants'
+    ],
+  },
 };
-
 // Conditionally apply PWA wrapper based on environment
 const applyConfig = () => {
   // Check if we're in development mode
