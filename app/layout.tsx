@@ -8,8 +8,7 @@ import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { persistQueryClient } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { useTermsModal } from '@/hooks/use-terms-modal';
-import DebugPanel from './debug';
-import { TenantProvider } from './netvend/contexts/tenant-context';
+
 
 // Load Fonts
 const dinBold = localFont({ src: "./fonts/D-DIN-Bold.ttf", variable: "--font-din-bold", weight: "100 900" });
@@ -63,14 +62,11 @@ export default function RootLayout({
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
       <body className={`${dinBold.variable} ${dinNormal.variable} ${dinCondensed.variable} ${dinItalic.variable} ${dinXBold.variable} antialiased`}>
-      <TenantProvider>
         <QueryClientProvider client={queryClient}>
           <SpeedInsights />
           <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
           {TermsModal}
-          <DebugPanel />
         </QueryClientProvider>
-        </TenantProvider>
       </body>
     </html>
   );
