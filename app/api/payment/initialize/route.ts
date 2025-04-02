@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
         email,
         amount,
         callback_url,
-        channels: ['bank_transfer']
+        channels: ['bank_transfer', 'card', 'ussd', 'bank']
       },
       {
         headers: {
