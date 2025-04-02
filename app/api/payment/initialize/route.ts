@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { InitializeResponse } from '@/lib/types';
+import { channel } from 'diagnostics_channel';
 
 const paystackKey = process.env.NODE_ENV === 'development' ? process.env.PAYSTACK_TEST_KEY : process.env.PAYSTACK_SECRET_KEY;
 export async function POST(request: NextRequest) {
@@ -14,6 +15,7 @@ export async function POST(request: NextRequest) {
         email,
         amount,
         callback_url,
+        channels: ['bank_transfer']
       },
       {
         headers: {
