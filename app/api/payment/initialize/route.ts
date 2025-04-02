@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
         customizations: {
           title: "Flourish Network Subscription",
 
-          logo: "https://flourishnet.online/logo.png" // Update with your actual logo URL
+          logo: "https://www.flourishnet.online/icons/icon-192x192.png"
         }
       },
       {
