@@ -1,77 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
+import { InitializeResponse } from '@/lib/types';
 
-const flutterwaveSecretKey = process.env.NODE_ENV === 'development' 
-  ? process.env.FLUTTERWAVE_TEST_KEY 
-  : process.env.FLUTTERWAVE_SECRET_KEY;
-
+const paystackSecretKey = process.env.NODE_ENV === 'development' ? process.env.PAYSTACK_TEST_KEY : process.env.PAYSTACK_SECRET_KEY;
 export async function GET(request: NextRequest) {
   try {
-    // Get the transaction ID from the URL
+    // Get the reference from the URL
     const { searchParams } = new URL(request.url);
-    const transaction_id = searchParams.get('transaction_id');
-    const tx_ref = searchParams.get('tx_ref');
+    const reference = searchParams.get('reference');
 
-    // We can verify using either transaction_id or tx_ref
-    let verificationEndpoint;
-    let queryParam;
-
-    if (transaction_id) {
-      verificationEndpoint = `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`;
-      queryParam = transaction_id;
-    } else if (tx_ref) {
-      verificationEndpoint = `https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${tx_ref}`;
-      queryParam = tx_ref;
-    } else {
+    // Validate the reference
+    if (!reference) {
       return NextResponse.json(
-        { error: 'Missing transaction ID or reference' },
+        { error: 'Missing transaction reference' },
         { status: 400 }
       );
     }
 
-    console.log(`Verifying transaction with ${transaction_id ? 'ID' : 'reference'}: ${queryParam}`);
+    console.log(`Verifying transaction with reference: ${reference}`);
     
-    if (!flutterwaveSecretKey) {
-      console.error('FLUTTERWAVE_SECRET_KEY is not defined in environment variables');
+    if (!paystackSecretKey) {
+      console.error('PAYSTACK_SECRET_KEY is not defined in environment variables');
       return NextResponse.json(
         { error: 'Payment provider configuration error' },
         { status: 500 }
       );
     }
 
-    // Call Flutterwave API to verify the transaction
-    const response = await axios.get(
-      verificationEndpoint,
+    // Call Paystack API to verify the transaction
+    const response = await fetch(
+      `https://api.paystack.co/transaction/verify/${reference}`,
       {
+        method: 'GET',
         headers: {
-          Authorization: `Bearer ${flutterwaveSecretKey}`,
+          Authorization: `Bearer ${paystackSecretKey}`,
           'Content-Type': 'application/json',
         },
       }
     );
 
-    console.log('Flutterwave verification response:', JSON.stringify(response.data));
+    // Parse the response
+    const data = await response.json();
+    
+    console.log('Paystack verification response:', JSON.stringify(data));
 
-    // Transform the response to match the expected Paystack format
-    const transformedResponse = {
-      status: response.data.status === "success",
-      message: response.data.message,
-      data: {
-        id: response.data.data.id,
-        reference: response.data.data.tx_ref,
-        status: response.data.data.status === "successful" ? "success" : "failed",
-        amount: response.data.data.amount,
-        metadata: response.data.data.meta,
-        customer: {
-          email: response.data.data.customer.email
-        }
-      }
-    };
+    // Check if the verification was successful
+    if (!response.ok) {
+      return NextResponse.json(
+        { 
+          error: data.message || 'Failed to verify payment',
+          details: data 
+        },
+        { status: response.status }
+      );
+    }
 
-    return NextResponse.json(transformedResponse);
-  } catch (error: any) {
+    // Return the verification result
+    return NextResponse.json(data);
+  } catch (error) {
     // Log the error for debugging
-    console.error('Error verifying payment:', error.response?.data || error.message);
+    console.error('Error verifying payment:', error);
     
     // Return a friendly error response
     return NextResponse.json(

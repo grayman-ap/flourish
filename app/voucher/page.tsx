@@ -123,29 +123,24 @@ export default function Page() {
     const storedPaymentVerified = localStorage.getItem("payment_verified") === "true";
     const storedVoucherGenerationAttempted = localStorage.getItem("voucher_generation_attempted") === "true";
     const storedVoucher = localStorage.getItem("active_vc");
-  
+
     console.log("Loaded from localStorage:", {
       storedVerificationAttempted,
       storedPaymentVerified,
       storedVoucherGenerationAttempted,
       storedVoucher,
     });
-  
+
     // Only set these if not a new payment to avoid overriding fresh state
-    if (!ref && !params.get("transaction_id") && !params.get("tx_ref")) {
+    if (!ref) {
       setVerificationAttempted(storedVerificationAttempted);
       setPaymentVerified(storedPaymentVerified);
       setVoucherGenerationAttempted(storedVoucherGenerationAttempted);
     }
-  
-    // Check for Flutterwave parameters
-    const transaction_id = params.get("transaction_id");
-    const tx_ref = params.get("tx_ref");
-    const status = params.get("status");
-  
-    console.log("Initial check - ref:", ref, "transaction_id:", transaction_id, "tx_ref:", tx_ref, "status:", status, "voucher in state:", voucher);
-  
-    if (ref || transaction_id || tx_ref) {
+
+    console.log("Initial check - ref:", ref, "voucher in state:", voucher);
+
+    if (ref) {
       setIsNewPayment(true);
       setLoading(true);
       // Reset for new payment
@@ -160,8 +155,7 @@ export default function Page() {
       }
       setLoading(false);
     }
-  }, [ref, setVoucher, voucher, params]);
-  
+  }, [ref, setVoucher, voucher]);
 
   // Verify payment with retry
   const verifyTransaction = useCallback(async (maxRetries = 3) => {
@@ -172,48 +166,24 @@ export default function Page() {
       setLoading(false);
       return null;
     }
-  
+
     debugRef.current.verifyCount++;
     console.log(`Verification attempt #${debugRef.current.verifyCount}`);
-  
-    // Check for Flutterwave parameters
-    const transaction_id = params.get("transaction_id");
-    const tx_ref = params.get("tx_ref");
-    const status = params.get("status");
-  
-    if (!isNewPayment || (!ref && !transaction_id && !tx_ref)) {
+
+    if (!isNewPayment || !ref) {
       setVerificationAttempted(true);
       localStorage.setItem("verification_attempted", "true");
       setLoading(false);
       return null;
     }
-  
-    // If Flutterwave returns status=cancelled, fail immediately
-    if (status === "cancelled") {
-      toast.error("Payment was cancelled");
-      setVerificationAttempted(true);
-      localStorage.setItem("verification_attempted", "true");
-      setLoading(false);
-      return null;
-    }
-  
+
     let attempts = 0;
     while (attempts < maxRetries) {
       try {
         setLoading(true);
-        // Construct the verification URL based on available parameters
-        let verificationUrl = "/api/payment/verify?";
-        if (ref) {
-          verificationUrl += `reference=${ref}`;
-        } else if (transaction_id) {
-          verificationUrl += `transaction_id=${transaction_id}`;
-        } else if (tx_ref) {
-          verificationUrl += `tx_ref=${tx_ref}`;
-        }
-  
-        const apiResponse = await fetch(verificationUrl);
+        const apiResponse = await fetch(`/api/payment/verify?reference=${ref}`);
         if (!apiResponse.ok) throw new Error((await apiResponse.json()).error || "Verification failed");
-  
+
         const data = await apiResponse.json();
         console.log("Payment verification response:", data);
         if (data.status === true) {
@@ -241,7 +211,7 @@ export default function Page() {
         await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
       }
     }
-  }, [ref, isNewPayment, params]);
+  }, [ref, isNewPayment]);
 
   // Generate voucher with retry
   const generateVoucher = useCallback(async () => {

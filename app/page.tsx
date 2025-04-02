@@ -477,7 +477,6 @@ useEffect(() => {
             transaction_id: transactionId,
             voucher_data: voucherData
           },
-          // Simplified callback URL - no parameters needed
           callback_url: `${callback_url}/voucher`,
         }),
       });
