@@ -464,14 +464,14 @@ useEffect(() => {
       // Generate a transaction ID to link payment with voucher
       const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
       localStorage.setItem("current_transaction", transactionId);
-  
+      const randomEmail = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 10)}@gmail.com`;
       const response = await fetch('/api/payment/initialize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email: network_location === 'nana-network' ? "fromnanalodge@gmail.com" : "fromalherilodge@gmail.com",
+          email: randomEmail,
           amount: amount * 100,
           metadata: {
             transaction_id: transactionId,
