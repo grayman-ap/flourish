@@ -446,92 +446,108 @@ useEffect(() => {
   // to prevent infinite loops
 }, [network_location, duration, capacity, data_bundle]);
 
-  const initializePayment = async (): Promise<InitializeResponse> => {
-    setIsProcessing(true);
-    try {
-      // Store ALL parameters needed for voucher generation in localStorage
-      const voucherData = {
-        duration,
-        capacity,
-        bundle: data_bundle,
-        network_location,
-        timestamp: Date.now() // Add timestamp for security
-      };
-      
-      // Store the voucher parameters in localStorage
-      localStorage.setItem("voucher_params", JSON.stringify(voucherData));
-  
-      // Generate a transaction ID to link payment with voucher
-      const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-      localStorage.setItem("current_transaction", transactionId);
-  
-      const response = await fetch('/api/payment/initialize', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+const initializePayment = async (): Promise<InitializeResponse> => {
+  setIsProcessing(true);
+  try {
+    // Store ALL parameters needed for voucher generation in localStorage
+    const voucherData = {
+      duration,
+      capacity,
+      bundle: data_bundle,
+      network_location,
+      timestamp: Date.now() // Add timestamp for security
+    };
+    
+    // Store the voucher parameters in localStorage
+    localStorage.setItem("voucher_params", JSON.stringify(voucherData));
+
+    // Generate a transaction ID to link payment with voucher
+    const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    localStorage.setItem("current_transaction", transactionId);
+
+    const response = await fetch('/api/payment/initialize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: network_location === 'nana-network' ? "fromnanalodge@gmail.com" : "fromalherilodge@gmail.com",
+        amount: amount,
+        metadata: {
+          transaction_id: transactionId,
+          voucher_data: voucherData
         },
-        body: JSON.stringify({
-          email: network_location === 'nana-network' ? "fromnanalodge@gmail.com" : "fromalherilodge@gmail.com",
-          amount: amount * 100,
-          metadata: {
-            transaction_id: transactionId,
-            voucher_data: voucherData
-          },
-          // Simplified callback URL - no parameters needed
-          callback_url: `${callback_url}/voucher`,
-        }),
-      });
-    
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to initialize payment');
-      }
-    
-      const data = await response.json();
-      if (data.data) {
-        // Store the payment reference for verification
-        localStorage.setItem("payment_reference", data.data.reference);
-        
-        toast.success("Payment initialization successful");
-        router.push(data.data.authorization_url);
-      }
-      return data;
-    } catch (error: any) {
-      toast.error(`Failed to initialize payment: ${error.message}`);
-      throw new Error(`Failed to initialize payment: ${error.message}`);
-    } finally {
-      setIsProcessing(false);
+        // Simplified callback URL - no parameters needed
+        callback_url: `${callback_url}/voucher`,
+      }),
+    });
+  
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to initialize payment');
     }
-  };
+  
+    const data = await response.json();
+    if (data.data) {
+      // Store the payment reference for verification
+      localStorage.setItem("payment_reference", data.data.reference);
+      
+      toast.success("Payment initialization successful");
+      router.push(data.data.authorization_url);
+    }
+    return data;
+  } catch (error: any) {
+    toast.error(`Failed to initialize payment: ${error.message}`);
+    throw new Error(`Failed to initialize payment: ${error.message}`);
+  } finally {
+    setIsProcessing(false);
+  }
+};
+
   
 
-  // Verify transaction
-  const verifyTransaction = useCallback(async (): Promise<InitializeResponse | null> => {
-    if (!ref) {
-      return null;
-    }
-    try {
-      setIsProcessing(true);
-      const response = await fetch(`/api/payment/verify?reference=${ref}`);
+const verifyTransaction = useCallback(async (): Promise<InitializeResponse | null> => {
+  // Check for both Paystack and Flutterwave parameters
+  const transaction_id = param.get("transaction_id");
+  const tx_ref = param.get("tx_ref");
+  
+  if (!ref && !transaction_id && !tx_ref) {
+    return null;
+  }
+  
+  try {
+    setIsProcessing(true);
     
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to verify payment');
-      }
-    
-      const data = await response.json();
-      if (data) {
-        setResponse(data);
-        toast.success("Payment verified successfully");
-      }
-      return data;
-    } catch (error: any) {
-      toast.error(`Failed to verify payment: ${error.message}`);
-      throw new Error(`Failed to verify payment: ${error.message}`);
-    } finally {
-      setIsProcessing(false);
+    // Construct the verification URL based on available parameters
+    let verificationUrl = "/api/payment/verify?";
+    if (ref) {
+      verificationUrl += `reference=${ref}`;
+    } else if (transaction_id) {
+      verificationUrl += `transaction_id=${transaction_id}`;
+    } else if (tx_ref) {
+      verificationUrl += `tx_ref=${tx_ref}`;
     }
-  }, [ref]);
+    
+    const response = await fetch(verificationUrl);
+  
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to verify payment');
+    }
+  
+    const data = await response.json();
+    if (data) {
+      setResponse(data);
+      toast.success("Payment verified successfully");
+    }
+    return data;
+  } catch (error: any) {
+    toast.error(`Failed to verify payment: ${error.message}`);
+    throw new Error(`Failed to verify payment: ${error.message}`);
+  } finally {
+    setIsProcessing(false);
+  }
+}, [ref, param]);
 
   // Handle pay button click
   const handlePay = async () => {
@@ -578,10 +594,13 @@ useEffect(() => {
   
   // Verify transaction when reference is available
   useEffect(() => {
-    if (ref) {
+    const transaction_id = param.get("transaction_id");
+    const tx_ref = param.get("tx_ref");
+    
+    if (ref || transaction_id || tx_ref) {
       verifyTransaction();
     }
-  }, [ref, verifyTransaction]);
+  }, [ref, param, verifyTransaction]);
 
   return (
     <Drawer onOpenChange={handleOpen}>
