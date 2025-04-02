@@ -1,32 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { InitializeResponse } from '@/lib/types';
-import { channel } from 'diagnostics_channel';
 
-const paystackKey = process.env.NODE_ENV === 'development' ? process.env.PAYSTACK_TEST_KEY : process.env.PAYSTACK_SECRET_KEY;
+const flutterwaveSecretKey = process.env.NODE_ENV === 'development' 
+  ? process.env.FLUTTERWAVE_TEST_KEY 
+  : process.env.FLUTTERWAVE_SECRET_KEY;
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { amount, email, callback_url } = body;
+    const { amount, email, callback_url, metadata } = body;
     
-    const response = await axios.post<InitializeResponse>(
-      'https://api.paystack.co/transaction/initialize',
+    // Generate a unique transaction reference
+    const tx_ref = `FLW-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+    
+    const response = await axios.post(
+      'https://api.flutterwave.com/v3/payments',
       {
-        email,
+        tx_ref,
         amount,
         callback_url,
         channels: ['bank_transfer']
       },
       {
         headers: {
-          Authorization: `Bearer ${paystackKey}`,
+          Authorization: `Bearer ${flutterwaveSecretKey}`,
           'Content-Type': 'application/json',
         },
       }
     );
 
-    return NextResponse.json(response.data);
+    console.log("Flutterwave response:", JSON.stringify(response.data));
+
+    // Check if the response has the expected structure
+    if (!response.data || !response.data.data || !response.data.data.link) {
+      throw new Error("Invalid response from payment provider");
+    }
+
+    // Transform the response to match the expected format
+    const transformedResponse = {
+      status: response.data.status === "success",
+      message: response.data.message,
+      data: {
+        authorization_url: response.data.data.link,
+
+
+        reference: tx_ref, // Use tx_ref as the reference
+        access_code: response.data.data.id ? response.data.data.id.toString() : tx_ref
+      }
+    };
+
+    return NextResponse.json(transformedResponse);
   } catch (error: any) {
+    console.error('Payment initialization error:', error.response?.data || error.message);
     return NextResponse.json(
       { error: error.response?.data?.message || error.message },
       { status: 500 }

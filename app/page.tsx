@@ -578,10 +578,13 @@ useEffect(() => {
   
   // Verify transaction when reference is available
   useEffect(() => {
-    if (ref) {
+    const transaction_id = param.get("transaction_id");
+    const tx_ref = param.get("tx_ref");
+    
+    if (ref || transaction_id || tx_ref) {
       verifyTransaction();
     }
-  }, [ref, verifyTransaction]);
+  }, [ref, param, verifyTransaction]);
 
   return (
     <Drawer onOpenChange={handleOpen}>
